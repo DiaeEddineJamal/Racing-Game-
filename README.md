@@ -1,0 +1,132 @@
+# Turbo Kart Rush
+
+**An arcade kart racer in the spirit of Mario Kart, built entirely with Three.js. Every mesh, texture, sound effect and music track is generated in code at load time. There are no asset files in this repository.**
+
+The whole game was produced by five Claude Fable 5.1 sub-agents working in parallel from a single prompt, without a single follow-up question. The prompt is reproduced below.
+
+<p align="center">
+  <a href="https://bridge-mind.github.io/turbo-kart-rush/"><img src="docs/screenshots/title.jpg" alt="Turbo Kart Rush title screen" width="800"></a>
+</p>
+
+<p align="center">
+  <a href="https://bridge-mind.github.io/turbo-kart-rush/"><strong>▶ Play it in your browser</strong></a>
+</p>
+
+## Play
+
+Open **https://bridge-mind.github.io/turbo-kart-rush/** in a desktop browser with WebGL2 (Chrome, Edge, Firefox or Safari). Click or press Enter on the title screen, choose one of eight racers, pick a circuit and difficulty, then Start Race. A keyboard or a gamepad works.
+
+Three laps against seven AI drivers. Drift through corners and release for a mini-turbo. Grab item boxes and fire shells, drop bananas, pop mushrooms, or call down lightning on the field.
+
+## The prompt that built this
+
+This is the complete, verbatim prompt given to Claude Code. Nothing else was specified.
+
+> I need you to launch five Fable 5.1 sub-agents and help me build a triple A quality game that is a clone of Mario Kart. What I want you to do is I want you to launch these sub-agents, build the game without asking me any questions at all, and use 3JS to build the game. And once you're done, report back to me.
+
+## How it was built
+
+The orchestrating agent wrote an architecture contract first, then launched five sub-agents that each owned one slice of the codebase and built against shared TypeScript interfaces and a typed event bus. No sub-agent edited another's files.
+
+| Workstream | Owns | Delivers |
+| --- | --- | --- |
+| A | `src/game`, `src/ui`, `src/main.ts` | Game loop, renderer, race manager, chase camera, HUD, menus, results |
+| B | `src/kart` | Arcade kart physics, drift and mini-turbo, kart model, input, roster |
+| C | `src/track` | Procedural track builder, four circuits, terrain, sky, decorations, grandstands |
+| D | `src/items`, `src/ai` | Item boxes and ten items, AI drivers with personalities and rubber-banding |
+| E | `src/audio`, `src/fx` | Web Audio engine and music sequencer, particle system, post-processing |
+
+The contract every agent built against is in [CONTRACT.md](CONTRACT.md). It fixes the world conventions, the public API of each module, the game flow and the quality bar. `src/core` holds the shared types, constants, math helpers and event bus, and was frozen before the sub-agents started.
+
+## Features
+
+- **Eight racers** in three weight classes, each with their own kart, colours and handling: Zippy Nova, Pixel Pop, Fennec Flash, Max Vortex, Juno Bolt, Kai Tidewater, Boulder Bram and Big Rig Rosa.
+- **Four circuits**, each 900 to 1400 metres with hills, a jump crest, hairpins, S-bends and a long straight: Sunny Circuit (grassland), Dune Drift (desert), Frostbite Falls (snow, with a void section over ice) and Neon Nexus (night city).
+- **Arcade handling** with hop, drift, three-stage mini-turbo, boost pads, off-road slowdown, wall bumps and kart-to-kart collisions resolved by weight.
+- **Ten items**: banana, green shell, red shell, blue shell, mushroom, triple mushroom, golden mushroom, star, lightning and bob-omb. Item odds are weighted by race position.
+- **AI drivers** that follow a racing line, drift on corners, dodge hazards, hunt item boxes, use items sensibly and rubber-band toward the player.
+- **Fully synthesised audio**: per-kart engine synthesis with positional panning, dozens of sound effects, and a procedural chiptune sequencer with separate menu, race, final-lap and results music.
+- **Effects**: a 6000-particle GPU pool for drift sparks, boost flames, tyre smoke, dust and speed streaks, plus bloom, speed lines, radial blur, chromatic aberration and vignette in a post-processing stack.
+- **Broadcast-style presentation**: 3-2-1-GO countdown, position and lap HUD, item roulette, minimap, final-lap and wrong-way banners, results screen with confetti.
+- **Gamepad support** alongside the keyboard.
+
+## Controls
+
+| Action | Keyboard | Gamepad |
+| --- | --- | --- |
+| Throttle | W or Up | Right trigger |
+| Brake / reverse | S or Down | Left trigger |
+| Steer | A and D, or Left and Right | Left stick |
+| Hop / drift | Space or Shift | A or RB |
+| Use item | E, Ctrl or Enter | X or LB |
+| Look back | Q | |
+| Pause | Esc or P | Start |
+| Menu confirm / back | Enter or Space / Esc | A / B |
+
+Hold drift through a corner. Sparks turn blue, then orange, then purple. Release for a bigger boost the longer you held it.
+
+## Run it locally
+
+```bash
+git clone https://github.com/bridge-mind/turbo-kart-rush.git
+cd turbo-kart-rush
+npm install
+npm run dev
+```
+
+Open the URL Vite prints, which is http://localhost:5178/ by default.
+
+| Script | What it does |
+| --- | --- |
+| `npm run dev` | Dev server with hot reload |
+| `npm run build` | Production build into `dist/` |
+| `npm run preview` | Serve the production build |
+| `npm run typecheck` | TypeScript check with no emit |
+
+## Project layout
+
+```
+turbo-kart-rush/
+├── index.html                 entry page, a single #app div and the module script
+├── CONTRACT.md                architecture contract the five sub-agents built against
+├── src/
+│   ├── main.ts                boots the Game
+│   ├── style.css              menus, HUD and results styling
+│   ├── core/                  frozen shared layer: types, constants, math, event bus
+│   ├── game/                  Game loop, RaceManager, FollowCamera, menu backdrop
+│   ├── ui/                    MainMenu, HUD, Minimap, PauseMenu, ResultsScreen, LoadingScreen
+│   ├── kart/                  Kart physics, KartModel, InputManager, roster
+│   ├── track/                 Track, Centerline, TerrainField, textures, builders/, tracks/
+│   ├── items/                 ItemManager and item visuals
+│   ├── ai/                    AIDriver
+│   ├── audio/                 AudioEngine, engine synthesis, sfx, music sequencer
+│   └── fx/                    ParticleSystem, PostFX, shaders
+├── docs/screenshots/          images used in this README
+└── .github/workflows/         builds and deploys to GitHub Pages on every push to main
+```
+
+## Technical notes
+
+- **Stack**: Three.js 0.185, TypeScript, Vite 8. WebGL2 with `ACESFilmicToneMapping` and shadow maps.
+- **Simulation**: a fixed-step accumulator drives kart physics, items, AI and race logic; rendering, camera, particles, audio and HUD run at display rate.
+- **Procedural everything**: textures are drawn onto canvases at load, geometry is built from primitives and merged or instanced, audio is synthesised with the Web Audio API. The production bundle is a single JavaScript file and a stylesheet.
+- **Performance targets** from the contract: 60 fps at 1080p on a 2020 laptop, under about 400 draw calls, one shadow-casting light, instanced decorations, and everything disposable so returning to the menu doesn't leak.
+
+## Deploying
+
+Every push to `main` runs `.github/workflows/deploy.yml`, which type-checks, builds and publishes `dist/` to GitHub Pages. Vite is configured with a relative `base`, so the build works from any sub-path.
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Character select](docs/screenshots/character-select.jpg) | ![Track select](docs/screenshots/track-select.jpg) |
+| ![Racing](docs/screenshots/race.jpg) | ![Title](docs/screenshots/title.jpg) |
+
+## Disclaimer
+
+Turbo Kart Rush is an original, fan-made homage to the kart-racing genre. It is not affiliated with, endorsed by, or associated with Nintendo. All characters, circuits, names, art, music and code in this repository are original.
+
+## License
+
+[MIT](LICENSE) © 2026 BridgeMind
