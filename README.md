@@ -81,6 +81,7 @@ Open the URL Vite prints, which is http://localhost:5178/ by default.
 | `npm run dev` | Dev server with hot reload. Starts the multiplayer server too, so online play works out of the box |
 | `npm run build` | Production build into `dist/` |
 | `npm run serve` | Build, then serve the game and the multiplayer sockets from one process on `:3000` |
+| `npm start` | Same as `npm run serve` - the entry point hosts that auto-run a `start` script (Bonto, Glitch-style PaaS) expect |
 | `npm run server` | Multiplayer server only, against whatever is already in `dist/` |
 | `npm run preview` | Serve the production build (static only - no multiplayer) |
 | `npm run typecheck` | TypeScript check with no emit |
@@ -140,16 +141,24 @@ want to race.
 server (not a serverless function) with WebSocket support, free, without asking
 for payment details.
 
-1. Sign up at bonto.dev and connect this GitHub repo.
-2. Build command: `npm run build`. Start command: `node server/index.js`.
-3. Deploy. Bonto gives the app a `.bonto.run` URL.
+Bonto has no separate build-command field - Glitch-style, it runs `npm install`
+then whatever your `start` script says, and this repo's `start` script already
+does the whole job (`npm run build && node server/index.js`), so there is
+nothing to configure beyond pointing it at the repo:
+
+1. Sign up at bonto.dev, create a Node.js app, and connect this GitHub repo
+   (or use Bonto's git push-to-deploy if you'd rather push directly).
+2. Deploy. Bonto runs `npm install && npm start`, which builds the client and
+   launches the server together, and gives the app a `.bonto.run` URL.
+
+If the page you get back is the raw source instead of the game - a blank page,
+or the browser console mentions `/src/main.ts` - the project was created as a
+**static site** rather than a **Node.js app**; recreate it as the latter so
+`npm start` actually runs.
 
 A free app sleeps after 30 minutes idle and wakes on the next request, same
 as the option below - the lobby's "waking the game server" message and the
-client's patient retry cover this either way. Bonto's dashboard has changed
-before and may again; if a step above doesn't match what you see, the shape
-of it - point it at this repo, `npm run build` to build, `node server/index.js`
-to start - is what to look for.
+client's patient retry cover this either way.
 
 **If you don't mind a card on file:** Render's free web-service tier is $0
 unless you exceed the free limits or upgrade, and `render.yaml` in this repo
@@ -170,9 +179,10 @@ connection is redirected to a server running somewhere that can hold a
 WebSocket open.
 
 1. Deploy `server/index.js` to a host that supports WebSockets - **Bonto**
-   needs no card, per the section above (build `npm run build`, start
-   `node server/index.js`); Render/Railway/Fly.io work too if a card is fine.
-   Note the URL it gives you, e.g. `https://lmongolyan-kart.bonto.run`.
+   needs no card, per the section above (create it as a Node.js app, connect
+   the repo, `npm start` does the rest); Render/Railway/Fly.io work too if a
+   card is fine. Note the URL it gives you, e.g.
+   `https://lmongolyan-kart.bonto.run`.
 2. In the Vercel dashboard: **Project → Settings → Environment Variables** →
    add `VITE_GAME_SERVER` = that URL (Production, and Preview if you want
    preview deploys to connect too).
