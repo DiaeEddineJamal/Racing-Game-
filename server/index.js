@@ -20,6 +20,7 @@ import { Server } from 'socket.io';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
+const PUBLIC = path.join(ROOT, 'public');
 const PORT = Number(process.env.PORT) || 3000;
 const LEADERBOARD_FILE = path.join(ROOT, 'server', 'leaderboard.json');
 
@@ -165,6 +166,11 @@ app.get('/api/leaderboard/:trackId', (req, res) => {
 
 if (fs.existsSync(DIST)) {
   app.use(express.static(DIST, { maxAge: '1h', index: 'index.html' }));
+  // public/ is served straight from the repo as well as from whatever vite
+  // copied into dist/. A free host installs production dependencies only, so it
+  // cannot run the build; the committed dist/ holds just index.html and the
+  // hashed bundle, and the karts, audio and fonts come from here.
+  app.use(express.static(PUBLIC, { maxAge: '1d' }));
   app.use((_req, res) => res.sendFile(path.join(DIST, 'index.html')));
 } else {
   app.use((_req, res) => {

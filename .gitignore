@@ -1,8 +1,17 @@
 # dependencies
 node_modules/
 
-# build output (rebuilt by CI for GitHub Pages)
-dist/
+# Build output. The hashed bundle and index.html ARE committed: a free host
+# installs production dependencies only, so vite is not there to build with,
+# and a 512MB container should not be running rollup on every wake either.
+# Everything vite copies in from public/ stays out of git - the server serves
+# public/ directly, and Vercel / Pages run their own build.
+dist/*
+!dist/index.html
+dist/assets/*
+!dist/assets/
+!dist/assets/index-*.js
+!dist/assets/index-*.css
 
 # local env / secrets
 .env

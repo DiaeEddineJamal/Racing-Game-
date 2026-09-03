@@ -30,7 +30,7 @@ const UA =
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
-  headless: 'new',
+  headless: true,
   args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--use-gl=angle', '--mute-audio', '--autoplay-policy=no-user-gesture-required'],
 });
 

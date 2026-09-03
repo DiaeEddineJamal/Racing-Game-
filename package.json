@@ -13,7 +13,7 @@
     "check:browser": "node tools/browser-check.mjs",
     "check:mobile": "node tools/mobile-check.mjs",
     "serve": "npm run build && node server/index.js",
-    "start": "npm run serve"
+    "start": "node server/index.js"
   },
   "dependencies": {
     "compression": "^1.8.1",
@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "@types/three": "^0.185.4",
-    "puppeteer-core": "^25.10.0",
+    "puppeteer-core": "^24.43.1",
     "typescript": "^7.0.2",
     "vite": "^8.2.2"
   }

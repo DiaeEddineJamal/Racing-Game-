@@ -34,7 +34,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // because software rendering hides exactly the hitches we are looking for.
 const browser = await puppeteer.launch({
   executablePath: CHROME,
-  headless: 'new',
+  headless: true,
   args: ['--no-sandbox', '--mute-audio', '--autoplay-policy=no-user-gesture-required', '--enable-unsafe-swiftshader'],
   defaultViewport: { width: 1600, height: 900 },
 });

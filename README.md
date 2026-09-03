@@ -81,7 +81,7 @@ Open the URL Vite prints, which is http://localhost:5178/ by default.
 | `npm run dev` | Dev server with hot reload. Starts the multiplayer server too, so online play works out of the box |
 | `npm run build` | Production build into `dist/` |
 | `npm run serve` | Build, then serve the game and the multiplayer sockets from one process on `:3000` |
-| `npm start` | Same as `npm run serve` - the entry point hosts that auto-run a `start` script (Bonto, Glitch-style PaaS) expect |
+| `npm start` | Runs the server against the committed build - what a host that auto-runs a `start` script (Bonto, Glitch-style PaaS) executes |
 | `npm run server` | Multiplayer server only, against whatever is already in `dist/` |
 | `npm run preview` | Serve the production build (static only - no multiplayer) |
 | `npm run typecheck` | TypeScript check with no emit |
@@ -142,17 +142,28 @@ server (not a serverless function) with WebSocket support, free, without asking
 for payment details.
 
 Bonto has no separate build-command field - Glitch-style, it runs `npm install`
-then whatever your `start` script says, and this repo's `start` script already
-does the whole job (`npm run build && node server/index.js`), so there is
-nothing to configure beyond pointing it at the repo:
+then whatever your `start` script says. It also installs production
+dependencies only, so `vite` is not there to build with, and a 512MB container
+has no business running rollup on every wake in any case. So the build does not
+happen on the host at all:
+
+- `dist/index.html` and the hashed bundle are **committed** to this repo.
+- `public/` is served straight from the repo by `server/index.js`, so the 25MB
+  of karts, audio and fonts are not duplicated into `dist/` in git.
+- `npm start` is therefore just `node server/index.js`, and a wake from sleep
+  is instant.
 
 1. Sign up at bonto.dev, create a Node.js app, and connect this GitHub repo
    (or use Bonto's git push-to-deploy if you'd rather push directly).
-2. Deploy. Bonto runs `npm install && npm start`, which builds the client and
-   launches the server together, and gives the app a `.bonto.run` URL.
+2. Deploy. Bonto runs `npm install && npm start` and gives the app a
+   `.bonto.run` URL.
+
+**When you change client code, run `npm run build` and commit the changed
+`dist/` files** - otherwise the deployed game stays on the previous bundle.
+Vercel and GitHub Pages are unaffected by this: they run their own build.
 
 If the page you get back is the raw source instead of the game - a blank page,
-or the browser console mentions `/src/main.ts` - the project was created as a
+or the browser console mentioning `/src/main.ts` - the project was created as a
 **static site** rather than a **Node.js app**; recreate it as the latter so
 `npm start` actually runs.
 
