@@ -90,7 +90,15 @@ export class NetClient {
       return;
     }
     this.setStatus('connecting');
-    const options = { transports: ['websocket', 'polling'], reconnectionAttempts: 6, timeout: 8000 };
+    // Patient on purpose: a free host (Render and friends) puts the server to
+    // sleep when nobody is racing, and the first connection has to wait for it
+    // to boot. Giving up after a few seconds would look like a broken game.
+    const options = {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 14,
+      reconnectionDelayMax: 4000,
+      timeout: 20000,
+    };
     const socket = SERVER_URL ? io(SERVER_URL, options) : io(options);
     this.socket = socket;
 

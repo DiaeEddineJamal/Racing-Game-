@@ -128,17 +128,26 @@ The game is two pieces: a static client (`dist/`) and the multiplayer server
 files. Nothing on those origins answers `wss://<your-site>/socket.io`, so single
 player works and PLAY ONLINE fails with a refused WebSocket. Two ways round it:
 
-### One host for everything (simplest)
+### One host for everything (simplest, and free)
 
-Deploy the repo somewhere that runs a Node process and holds WebSockets open -
-Render, Railway, Fly.io, a VPS:
+Deploy the repo somewhere that runs a Node process and holds WebSockets open.
+Render's free tier does, and `render.yaml` in this repo is a ready-made
+blueprint for it:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/DiaeEddineJamal/Racing-Game-)
+
+Or by hand, on Render or Railway or Fly.io or a VPS:
 
 - Build command: `npm ci && npm run build`
 - Start command: `node server/index.js`
 
 The server serves `dist/` and the sockets from the same origin, so there is
-nothing else to configure. `render.yaml` in the repo is a ready-made blueprint
-for Render.
+nothing else to configure - no environment variables, no second deployment.
+That URL is then the one to share with the people you want to race.
+
+A free instance sleeps after about fifteen minutes with nobody on it, and the
+first connection afterwards waits for it to boot. The lobby says so while it
+waits, and the client keeps retrying for around a minute rather than giving up.
 
 ### Client on Vercel, server elsewhere
 

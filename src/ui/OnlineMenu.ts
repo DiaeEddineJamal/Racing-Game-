@@ -38,6 +38,8 @@ export class OnlineMenu {
   private readonly nameInput: HTMLInputElement;
   private readonly codeInput: HTMLInputElement;
   private readonly statusLine: TextField;
+  /** Pending "still waking up" message while the socket is connecting. */
+  private wakeTimer = 0;
 
   // lobby panel
   private readonly codeLabel: TextField;
@@ -172,7 +174,17 @@ export class OnlineMenu {
 
     // ------------------------------------------------------------ net wiring
     this.net.onStatus = (status, detail) => {
-      if (status === 'connecting') this.statusLine.set('Connecting to the game server…');
+      window.clearTimeout(this.wakeTimer);
+      if (status === 'connecting') {
+        this.statusLine.set('Connecting to the game server…');
+        // A sleeping free-tier server can take the best part of a minute to
+        // boot. Say so rather than letting the player think it has hung.
+        this.wakeTimer = window.setTimeout(() => {
+          if (this.net.status === 'connecting') {
+            this.statusLine.set('Waking the game server… on a free host this can take up to a minute.');
+          }
+        }, 5000);
+      }
       else if (status === 'online') this.statusLine.set('Connected. Create a room or join one with a code.');
       else if (status === 'error') this.statusLine.set(detail ?? 'Could not reach the game server.');
       else this.statusLine.set('Disconnected from the game server.');
