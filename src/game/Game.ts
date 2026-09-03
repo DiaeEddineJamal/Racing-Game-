@@ -23,6 +23,7 @@ import type {
 import { createEmptyInput } from '../core/types';
 import { events } from '../core/events';
 import { COUNTDOWN_STEP_SECONDS, FIXED_DT, KART_COUNT, MAX_FRAME_DT } from '../core/constants';
+import { AdaptiveResolution, detectQuality, type QualityProfile } from '../core/quality';
 import { clamp, clamp01, damp } from '../core/math';
 
 import { Kart } from '../kart/Kart';
@@ -36,17 +37,23 @@ import { AIDriver } from '../ai/AIDriver';
 import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystem } from '../fx/ParticleSystem';
 import { PostFX } from '../fx/PostFX';
+import { Weather } from '../fx/Weather';
+import { buildEnvironmentProbe } from '../fx/EnvironmentProbe';
 
 import { RaceManager } from './RaceManager';
 import { FollowCamera } from './FollowCamera';
 import { MenuBackdrop } from './MenuBackdrop';
 import type { MenuFraming } from './MenuBackdrop';
+import { NetClient } from '../net/NetClient';
+import { NetRace } from '../net/NetRace';
 import { HUD } from '../ui/HUD';
 import { MainMenu } from '../ui/MainMenu';
+import { OnlineMenu } from '../ui/OnlineMenu';
 import type { MenuPanel } from '../ui/MainMenu';
 import { ResultsScreen } from '../ui/ResultsScreen';
 import { PauseMenu } from '../ui/PauseMenu';
 import { LoadingScreen } from '../ui/LoadingScreen';
+import { TouchControls } from '../ui/TouchControls';
 import { el } from '../ui/dom';
 import { showToast } from '../ui/toast';
 
@@ -57,6 +64,14 @@ const RESULTS_DELAY_SECONDS = 1.6;
 const MAX_STEPS_PER_FRAME = 8;
 const SUN_DISTANCE = 90;
 const SHADOW_HALF_EXTENT = 30;
+/** Tone mapping exposure when a circuit does not override it. */
+const BASE_EXPOSURE = 0.95;
+/**
+ * How much of the environment probe reaches the materials. The probe exists so
+ * bodywork has something to reflect; pushed higher it doubles as ambient light
+ * and flattens the circuit into a bright haze.
+ */
+const ENV_PROBE_INTENSITY = 0.28;
 const EMPTY_KARTS: readonly IKart[] = [];
 
 function framingFor(panel: MenuPanel): MenuFraming {
@@ -76,6 +91,10 @@ interface RaceContext {
   trackDef: TrackDefinition;
   track: ITrack;
   karts: IKart[];
+  /** The kart this client drives. Not always karts[0] in an online race. */
+  player: IKart;
+  /** Live network session, or null for a single-player race. */
+  net: NetRace | null;
   aiDrivers: IAIDriver[];
   playerAutoDriver: IAIDriver | null;
   items: IItemManager;
@@ -88,6 +107,8 @@ interface RaceContext {
   fill: THREE.DirectionalLight;
   fog: THREE.FogExp2 | null;
   background: THREE.Color;
+  weather: Weather;
+  envProbe: THREE.Texture | null;
   unsubs: (() => void)[];
   resultsTimer: number;
 }
@@ -105,8 +126,19 @@ export class Game {
   private readonly postfx: IPostFX;
   private postfxOk = true;
 
+  private readonly quality: QualityProfile = detectQuality();
+  private readonly adaptive: AdaptiveResolution;
+  private renderScale = 1;
+
+  private readonly touch: TouchControls;
+  /** On-screen pad is shown during a race once we know this is a finger, not a mouse. */
+  private touchUi: boolean;
   private readonly backdrop: MenuBackdrop;
   private readonly mainMenu: MainMenu;
+  private readonly netClient = new NetClient();
+  private readonly onlineMenu: OnlineMenu;
+  /** True while the player is inside the online flow (lobby or an online race). */
+  private online = false;
   private readonly results: ResultsScreen;
   private readonly pauseMenu: PauseMenu;
   private readonly loading: LoadingScreen;
@@ -131,6 +163,8 @@ export class Game {
   private disposed = false;
 
   private readonly playerInput: InputState = createEmptyInput();
+  /** Fed to the sim while an online race is paused, so the kart coasts to a stop. */
+  private readonly idleInput: InputState = createEmptyInput();
   private readonly unsubs: (() => void)[] = [];
   private readonly sunDir = new THREE.Vector3(0.4, 0.8, 0.3);
   private readonly tmpA = new THREE.Vector3();
@@ -144,13 +178,19 @@ export class Game {
     this.container = container;
 
     // ---------------------------------------------------------- renderer
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    const q = this.quality;
+    this.adaptive = new AdaptiveResolution(q.minRenderScale);
+    document.body.classList.toggle('touch-device', q.touch);
+    document.body.dataset.quality = q.tier;
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: q.antialias, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.toneMappingExposure = BASE_EXPOSURE;
+    this.renderer.shadowMap.enabled = q.shadows;
+    // Soft shadows cost a lot of samples; phones get the cheap filter.
+    this.renderer.shadowMap.type = q.tier === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.maxPixelRatio));
     this.renderer.domElement.className = 'game-canvas';
     container.appendChild(this.renderer.domElement);
 
@@ -167,10 +207,15 @@ export class Game {
     this.particles = new ParticleSystem();
     this.scene.add(this.particles.object);
     this.postfx = new PostFX();
-    try {
-      this.postfx.init(this.renderer, this.scene, this.camera);
-    } catch (err) {
-      console.error('[Game] PostFX init failed, using plain rendering', err);
+    if (q.postFX) {
+      try {
+        this.postfx.init(this.renderer, this.scene, this.camera);
+      } catch (err) {
+        console.error('[Game] PostFX init failed, using plain rendering', err);
+        this.postfxOk = false;
+      }
+    } else {
+      // Low tier: bloom and the composite pass are the first things to go.
       this.postfxOk = false;
     }
 
@@ -181,33 +226,71 @@ export class Game {
     this.mainMenu.onPanelChange = (panel) => this.onMenuPanel(panel);
     this.mainMenu.onStart = (settings) => this.startRace(settings);
 
+    this.mainMenu.onPlayOnline = () => this.showOnline();
+
+    this.onlineMenu = new OnlineMenu(
+      this.uiRoot,
+      this.netClient,
+      CHARACTERS as readonly CharacterDef[],
+      TRACKS as readonly TrackDefinition[],
+    );
+    this.onlineMenu.onHighlight = (id) => this.backdrop.setCharacter(getCharacter(id));
+    this.onlineMenu.onExit = () => {
+      this.online = false;
+      this.showMenu('title');
+    };
+    this.onlineMenu.onStart = (setup, trackId, laps, difficulty) => {
+      this.online = true;
+      const me = setup.grid.find((g) => g.kartId === setup.localKartId);
+      this.startRace({ characterId: me?.characterId ?? CHARACTERS[0].id, trackId, laps, difficulty, online: setup });
+    };
+
     this.results = new ResultsScreen(this.uiRoot);
     this.results.onRaceAgain = () => {
-      if (this.race) this.startRace(this.race.settings);
+      // Online, one client cannot restart on its own: everyone goes back to the room.
+      if (this.online) this.backToLobby();
+      else if (this.race) this.startRace(this.race.settings);
     };
-    this.results.onChangeTrack = () => this.returnToMenu('trackSelect');
-    this.results.onMainMenu = () => this.returnToMenu('title');
+    this.results.onChangeTrack = () => {
+      if (this.online) this.backToLobby();
+      else this.returnToMenu('trackSelect');
+    };
+    this.results.onMainMenu = () => {
+      if (this.online) {
+        this.online = false;
+        this.netClient.abandonRace();
+        this.netClient.leaveRoom();
+      }
+      this.returnToMenu('title');
+    };
 
     this.pauseMenu = new PauseMenu(this.uiRoot);
     this.pauseMenu.onResume = () => this.resume();
     this.pauseMenu.onRestart = () => {
       const settings = this.race?.settings;
       this.leavePause();
-      if (settings) this.startRace(settings);
+      if (this.online) this.backToLobby();
+      else if (settings) this.startRace(settings);
       else this.returnToMenu('title');
     };
     this.pauseMenu.onQuit = () => {
       this.leavePause();
+      if (this.online) {
+        this.backToLobby();
+        return;
+      }
       this.returnToMenu('title');
     };
 
     this.loading = new LoadingScreen(this.uiRoot);
     this.muteIndicator = el('div', 'mute-indicator', '🔇 MUTED', this.uiRoot);
+    this.touchUi = q.touch;
+    this.touch = new TouchControls(this.uiRoot, this.input);
 
     // ---------------------------------------------------------- listeners
     window.addEventListener('resize', this.onResize);
     window.addEventListener('keydown', this.onKeyDown);
-    window.addEventListener('pointerdown', this.onGesture, { passive: true });
+    window.addEventListener('pointerdown', this.onPointerDown, { passive: true });
     window.addEventListener('keydown', this.onGesture);
     window.addEventListener('blur', this.onBlur);
     document.addEventListener('visibilitychange', this.onVisibility);
@@ -234,7 +317,7 @@ export class Game {
     cancelAnimationFrame(this.rafId);
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('pointerdown', this.onGesture);
+    window.removeEventListener('pointerdown', this.onPointerDown);
     window.removeEventListener('keydown', this.onGesture);
     window.removeEventListener('blur', this.onBlur);
     document.removeEventListener('visibilitychange', this.onVisibility);
@@ -244,9 +327,12 @@ export class Game {
     this.backdrop.detach(this.scene);
     this.backdrop.dispose();
     this.mainMenu.dispose();
+    this.onlineMenu.dispose();
+    this.netClient.disconnect();
     this.results.dispose();
     this.pauseMenu.dispose();
     this.loading.dispose();
+    this.touch.dispose();
     this.muteIndicator.remove();
     this.input.dispose();
     this.safe(() => this.audio.dispose());
@@ -269,6 +355,13 @@ export class Game {
     if (dt < 0) dt = 0;
     this.elapsed += dt;
 
+    // Only adapt during a race: menus are cheap, and a menu-time downscale
+    // would be inherited by the first frames of the race that follows.
+    if (this.race && this.adaptive.update(dt)) {
+      this.renderScale = this.adaptive.value;
+      this.onResize();
+    }
+
     const input = this.input.update();
     try {
       this.frame(dt, input);
@@ -285,7 +378,11 @@ export class Game {
       case 'title':
       case 'characterSelect':
       case 'trackSelect':
-        this.mainMenu.handleInput(input);
+        if (this.online) {
+          if (input.back) this.onlineMenu.handleBack();
+        } else {
+          this.mainMenu.handleInput(input);
+        }
         this.backdrop.update(dt, this.camera);
         this.particles.update(dt, EMPTY_KARTS, this.camera);
         this.audio.update(dt, EMPTY_KARTS, -1, this.camera);
@@ -308,7 +405,14 @@ export class Game {
       case 'paused':
         this.pauseMenu.handleInput(input);
         if (input.pause && this.state === 'paused') this.resume();
-        this.render(dt);
+        if (this.online && this.race) {
+          // Online, the world cannot stop for one player: keep simulating and
+          // keep sending snapshots, with the paused kart simply off the throttle.
+          this.simulate(dt, this.idleInput);
+          this.renderRace(dt, false);
+        } else {
+          this.render(dt);
+        }
         return;
       case 'results':
         this.results.handleInput(input);
@@ -400,7 +504,9 @@ export class Game {
 
   private step(dt: number, r: RaceContext, input: InputState, useItem: boolean): void {
     const { track, karts, items } = r;
-    const player = karts[0];
+    const player = r.player;
+    // Remote karts run the same physics from the last inputs we received.
+    r.net?.applyRemoteInputs(dt);
 
     // Player input (or auto-drive after finishing).
     if (r.playerAutoDriver) {
@@ -440,6 +546,10 @@ export class Game {
       }
     }
 
+    // Nudge remote karts back onto their owner's authoritative pose before the
+    // race manager reads positions for laps and places.
+    r.net?.correctRemotes(dt);
+
     items.update(dt);
     r.raceManager.update(dt);
   }
@@ -450,14 +560,22 @@ export class Game {
       this.render(dt);
       return;
     }
-    const player = r.karts[0];
+    const player = r.player;
+    r.net?.send(dt);
     for (let i = 0; i < r.karts.length; i++) r.karts[i].updateVisuals(dt);
     r.track.update(dt, this.elapsed);
     r.followCamera.update(dt, player, lookBack);
     this.updateSun(r, player);
+    if (r.weather.active) {
+      // One terrain sample under the camera is enough for flakes to settle on:
+      // the shader fades them out across half a metre either side of it.
+      const cam = this.camera.position;
+      r.weather.update(dt, this.camera, r.track.heightAt(cam.x, cam.z));
+    }
     this.particles.update(dt, r.karts, this.camera);
     this.audio.update(dt, r.karts, player.state.id, this.camera);
     r.hud.update(dt, player, r.karts, r.raceManager.raceTime, r.raceManager.totalLaps);
+    r.hud.setNetwork(r.net ? this.netClient.pingMs : null);
     this.updatePostFxFeel(dt, player);
 
     if (this.state === 'finished' && r.resultsTimer > 0) {
@@ -479,6 +597,20 @@ export class Game {
       }
     }
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Weather lightning: a white frame plus a short spike in the key light. */
+  private strikeLightning(color: number): void {
+    const r = this.race;
+    if (!r) return;
+    if (this.postfxOk) this.safe(() => this.postfx.flash(color, 0.22));
+    const sun = r.sun;
+    const base = sun.intensity;
+    sun.intensity = base * 2.4;
+    // Restored on the next frame; a longer ramp would fight updateSun.
+    requestAnimationFrame(() => {
+      if (this.race === r) sun.intensity = base;
+    });
   }
 
   private updateSun(r: RaceContext, player: IKart): void {
@@ -521,6 +653,9 @@ export class Game {
     const from = this.state;
     this.state = next;
     this.uiRoot.dataset.state = next;
+    // The driving pad belongs to the race, not the menus - and not the pause
+    // screen either, where a stray thumb would keep the throttle open.
+    this.syncTouchPad();
     events.emit('game:stateChange', { from, to: next });
   }
 
@@ -528,6 +663,7 @@ export class Game {
     this.results.hide();
     this.pauseMenu.hide();
     this.loading.hide();
+    this.onlineMenu.hide();
     this.backdrop.setCharacter(this.mainMenu.highlightedCharacter);
     this.backdrop.setFraming(framingFor(panel), true);
     this.backdrop.attach(this.scene, this.camera, this.renderer);
@@ -548,10 +684,41 @@ export class Game {
     this.showMenu(panel);
   }
 
+  /** Title screen -> online lobby. The menu backdrop keeps running behind it. */
+  private showOnline(): void {
+    this.online = true;
+    this.disposeRace();
+    this.results.hide();
+    this.pauseMenu.hide();
+    this.loading.hide();
+    this.mainMenu.hide();
+    this.backdrop.setFraming('characters', true);
+    this.backdrop.attach(this.scene, this.camera, this.renderer);
+    this.onlineMenu.show();
+    this.setState('characterSelect');
+    this.playMusic('menu');
+  }
+
+  /** Leaves the current online race but stays in the room. */
+  private backToLobby(): void {
+    if (this.netClient.isHost) this.netClient.abandonRace();
+    this.disposeRace();
+    this.results.hide();
+    this.pauseMenu.hide();
+    this.loading.hide();
+    this.mainMenu.hide();
+    this.backdrop.setFraming('characters', true);
+    this.backdrop.attach(this.scene, this.camera, this.renderer);
+    this.onlineMenu.show('lobby');
+    this.setState('characterSelect');
+    this.playMusic('menu');
+  }
+
   private startRace(settings: RaceSettings): void {
     this.disposeRace();
     this.backdrop.detach(this.scene);
     this.mainMenu.hide();
+    this.onlineMenu.hide();
     this.results.hide();
     this.pauseMenu.hide();
     this.safe(() => this.particles.reset());
@@ -601,35 +768,68 @@ export class Game {
     const env = trackDef.environment;
     const karts = partial.karts;
 
-    // Karts: player 0 with the chosen character, AI 1..7 with the rest shuffled.
-    let playerChar: CharacterDef;
-    try {
-      playerChar = getCharacter(settings.characterId) as CharacterDef;
-    } catch {
-      playerChar = CHARACTERS[0] as CharacterDef;
-    }
-    const others = (CHARACTERS as readonly CharacterDef[]).filter((c) => c.id !== playerChar.id);
-    for (let i = others.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const t = others[i];
-      others[i] = others[j];
-      others[j] = t;
-    }
-    karts.push(new Kart(0, playerChar, true));
-    for (let id = 1; id < KART_COUNT; id++) {
-      const def = others.length > 0 ? others[(id - 1) % others.length] : playerChar;
-      karts.push(new Kart(id, def, false));
-    }
-
     const difficulty: Difficulty = settings.difficulty;
     const aiDrivers: IAIDriver[] = [];
-    for (let id = 1; id < karts.length; id++) {
-      aiDrivers.push(new AIDriver(karts[id], difficulty, id));
+    const online = settings.online;
+    let player: IKart;
+
+    if (online) {
+      // The grid comes from the server, so every client builds the same one.
+      for (const entry of online.grid) {
+        const def = getCharacter(entry.characterId) as CharacterDef;
+        const kart = new Kart(entry.kartId, def, entry.kartId === online.localKartId);
+        kart.state.displayName = entry.name;
+        karts.push(kart);
+      }
+      karts.sort((a, b) => a.state.id - b.state.id);
+      player = karts.find((k) => k.state.id === online.localKartId) ?? karts[0];
+      // Only the host drives the CPU field; everyone else receives it over the wire.
+      if (online.host) {
+        for (const entry of online.grid) {
+          if (entry.human) continue;
+          const kart = karts.find((k) => k.state.id === entry.kartId);
+          if (kart) aiDrivers.push(new AIDriver(kart, difficulty, entry.kartId));
+        }
+      }
+    } else {
+      // Karts: player 0 with the chosen character, AI 1..7 with the rest shuffled.
+      let playerChar: CharacterDef;
+      try {
+        playerChar = getCharacter(settings.characterId) as CharacterDef;
+      } catch {
+        playerChar = CHARACTERS[0] as CharacterDef;
+      }
+      const others = (CHARACTERS as readonly CharacterDef[]).filter((c) => c.id !== playerChar.id);
+      for (let i = others.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = others[i];
+        others[i] = others[j];
+        others[j] = t;
+      }
+      karts.push(new Kart(0, playerChar, true));
+      for (let id = 1; id < KART_COUNT; id++) {
+        const def = others.length > 0 ? others[(id - 1) % others.length] : playerChar;
+        karts.push(new Kart(id, def, false));
+      }
+      player = karts[0];
+      for (let id = 1; id < karts.length; id++) {
+        aiDrivers.push(new AIDriver(karts[id], difficulty, id));
+      }
     }
 
     const items: IItemManager = new ItemManager(this.particles);
     partial.items = items;
     items.init(track, karts);
+
+    let net: NetRace | null = null;
+    if (online) {
+      // We simulate our own kart, plus the CPU field when we are the host.
+      const owned = [online.localKartId];
+      if (online.host) {
+        for (const entry of online.grid) if (!entry.human) owned.push(entry.kartId);
+      }
+      net = new NetRace(this.netClient, karts, items, owned);
+    }
 
     const raceManager = new RaceManager(track, karts, settings);
     const followCamera = new FollowCamera(this.camera);
@@ -639,11 +839,12 @@ export class Game {
     const hud = new HUD(this.uiRoot, buildItemIcon);
     partial.hud = hud;
     hud.setTrack(track);
+    this.touch.bringToFront();
 
     // Lights from the track environment.
     const sun = new THREE.DirectionalLight(env.sunColor, env.sunIntensity);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(this.quality.shadowMapSize, this.quality.shadowMapSize);
     const sc = sun.shadow.camera;
     sc.left = -SHADOW_HALF_EXTENT;
     sc.right = SHADOW_HALF_EXTENT;
@@ -669,10 +870,25 @@ export class Game {
     const fog = env.fogDensity > 0 ? new THREE.FogExp2(env.fogColor, env.fogDensity) : null;
     const background = new THREE.Color(env.skyHorizon);
 
+    // Weather is presentation only: it never touches physics, and both clients
+    // in an online race build the same layers from the same track definition.
+    const weather = new Weather(env.weather, this.quality.weatherScale);
+    weather.onLightning = (color) => this.strikeLightning(color);
+    weather.setViewportHeight(this.renderer.domElement.height);
+
+    // Reflections for the bodywork, painted from this circuit's own sky.
+    const envProbe = buildEnvironmentProbe(this.renderer, env, this.quality.envMapSize);
+    this.scene.environment = envProbe;
+    // Enough for the bodywork to catch the sky; more than this and the probe
+    // starts acting as a second ambient light and washes the circuit out.
+    this.scene.environmentIntensity = envProbe ? ENV_PROBE_INTENSITY : 0;
+    this.renderer.toneMappingExposure = env.exposure ?? BASE_EXPOSURE;
+
     this.scene.add(track.object);
     for (const k of karts) this.scene.add(k.object);
     this.scene.add(items.object);
     this.scene.add(sun, sun.target, hemi, fill, fill.target);
+    if (weather.active) this.scene.add(weather.object);
     this.scene.fog = fog;
     this.scene.background = background;
 
@@ -681,6 +897,8 @@ export class Game {
       trackDef,
       track,
       karts,
+      player,
+      net,
       aiDrivers,
       playerAutoDriver: null,
       items,
@@ -692,22 +910,28 @@ export class Game {
       fill,
       fog,
       background,
+      weather,
+      envProbe,
       unsubs: [],
       resultsTimer: 0,
     };
     this.race = r;
+    this.adaptive.reset();
+    this.renderScale = 1;
+    this.onResize();
     this.accumulator = 0;
     this.pendingUseItem = false;
     this.speedFx = 0;
     this.boostFx = 0;
     this.hitFx = 0;
 
+    // `?auto=1` hands the player's kart to the AI. It is not dev-only on purpose:
+    // tools/browser-check.mjs drives real races through the production build with it.
+    if (new URLSearchParams(location.search).has('auto')) {
+      r.playerAutoDriver = new AIDriver(player, 'hard', player.state.id);
+    }
     if (import.meta.env.DEV) {
-      // Dev-only: `?auto=1` lets the AI drive the player for soak testing.
-      if (new URLSearchParams(location.search).has('auto')) {
-        r.playerAutoDriver = new AIDriver(karts[0], 'hard', 0);
-      }
-      (window as unknown as { __tkr?: unknown }).__tkr = {
+      (window as unknown as { __lk?: unknown }).__lk = {
         game: this,
         getRace: () => this.race,
         renderer: this.renderer,
@@ -717,8 +941,8 @@ export class Game {
 
     // Sync visuals once so the first rendered frame is sane.
     for (const k of karts) k.updateVisuals(0);
-    followCamera.snapTo(karts[0]);
-    this.updateSun(r, karts[0]);
+    followCamera.snapTo(player);
+    this.updateSun(r, player);
 
     r.unsubs.push(
       events.on('race:start', () => {
@@ -763,10 +987,10 @@ export class Game {
       for (let i = 0; i < n; i++) center.add(grid[i].position);
       center.multiplyScalar(1 / n);
     } else {
-      center.copy(r.karts[0].state.position);
+      center.copy(r.player.state.position);
     }
     const forward = this.tmpB;
-    r.karts[0].forwardDir(forward);
+    r.player.forwardDir(forward);
     if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1);
     forward.y = 0;
     forward.normalize();
@@ -779,13 +1003,14 @@ export class Game {
 
     r.raceManager.startCountdown();
     this.setState('countdown');
+    this.safe(() => this.audio.setCircuit?.(r.trackDef.id));
     this.playMusic('race');
   }
 
   private onPlayerFinished(r: RaceContext): void {
     if (this.state !== 'racing' && this.state !== 'countdown') return;
     try {
-      r.playerAutoDriver = new AIDriver(r.karts[0], 'normal', 0);
+      r.playerAutoDriver = new AIDriver(r.player, 'normal', r.player.state.id);
     } catch (err) {
       console.warn('[Game] could not create auto-driver for the player', err);
       r.playerAutoDriver = null;
@@ -799,7 +1024,17 @@ export class Game {
     const r = this.race;
     if (!r || this.state === 'results') return;
     r.hud.hide();
-    this.results.show(r.raceManager.getStandings());
+    const standings = r.raceManager.getStandings();
+    if (r.net) {
+      // The server decides who actually crossed first; local simulation only
+      // fills in racers it never heard a finish for.
+      for (const row of standings) {
+        const place = r.net.places.get(row.kartId);
+        if (place !== undefined) row.place = place;
+      }
+      standings.sort((a, b) => a.place - b.place);
+    }
+    this.results.show(standings);
     this.setState('results');
     this.playMusic('results');
   }
@@ -834,6 +1069,7 @@ export class Game {
     const r = this.race;
     if (!r) return;
     this.race = null;
+    r.net?.dispose();
     for (const u of r.unsubs) u();
     r.unsubs.length = 0;
 
@@ -841,6 +1077,12 @@ export class Game {
     for (const k of r.karts) this.scene.remove(k.object);
     this.scene.remove(r.items.object);
     this.scene.remove(r.sun, r.sun.target, r.hemi, r.fill, r.fill.target);
+    this.scene.remove(r.weather.object);
+    r.weather.dispose();
+    r.envProbe?.dispose();
+    this.scene.environment = null;
+    this.scene.environmentIntensity = 1;
+    this.renderer.toneMappingExposure = BASE_EXPOSURE;
     r.sun.dispose();
     r.hemi.dispose();
     r.fill.dispose();
@@ -871,10 +1113,26 @@ export class Game {
     this.safe(() => this.audio.playMusic(track));
   }
 
+  private enableTouchUi(): void {
+    if (this.touchUi) return;
+    this.touchUi = true;
+    document.body.classList.add('touch-device');
+    this.syncTouchPad();
+  }
+
+  private syncTouchPad(): void {
+    const racing = this.state === 'countdown' || this.state === 'racing' || this.state === 'finished';
+    this.touch.setVisible(racing && this.touchUi);
+  }
+
+  private readonly onPointerDown = (ev: PointerEvent): void => {
+    if (ev.pointerType === 'touch') this.enableTouchUi();
+    this.onGesture();
+  };
+
   private readonly onGesture = (): void => {
     if (this.audioStarted) return;
     this.audioStarted = true;
-    window.removeEventListener('pointerdown', this.onGesture);
     window.removeEventListener('keydown', this.onGesture);
     this.audio
       .init()
@@ -884,7 +1142,6 @@ export class Game {
       .catch((err: unknown) => {
         console.warn('[Game] audio init failed', err);
         this.audioStarted = false;
-        window.addEventListener('pointerdown', this.onGesture, { passive: true });
         window.addEventListener('keydown', this.onGesture);
       });
   };
@@ -900,11 +1157,14 @@ export class Game {
   private readonly onResize = (): void => {
     const w = Math.max(1, this.container.clientWidth || window.innerWidth);
     const h = Math.max(1, this.container.clientHeight || window.innerHeight);
-    const pr = Math.min(window.devicePixelRatio || 1, 2);
+    // Device pixel ratio is capped by the quality tier, then scaled again by the
+    // adaptive controller. Phones ship 3x screens they cannot afford to fill.
+    const pr = Math.min(window.devicePixelRatio || 1, this.quality.maxPixelRatio) * this.renderScale;
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.race?.weather.setViewportHeight(this.renderer.domElement.height);
     if (this.postfxOk) {
       try {
         this.postfx.setSize(w, h, pr);
@@ -917,10 +1177,16 @@ export class Game {
 
   private readonly onKeyDown = (ev: KeyboardEvent): void => {
     if (ev.repeat) return;
+    // Ignore shortcuts while a text field has focus (the lobby name / room code).
+    const target = ev.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
     if (ev.key === 'm' || ev.key === 'M') this.toggleMute();
+    else if ((ev.key === 'o' || ev.key === 'O') && this.state === 'title') this.showOnline();
   };
 
   private readonly onBlur = (): void => {
+    // Never auto-pause an online race: the other players are still driving.
+    if (this.online) return;
     if (this.state === 'racing' || this.state === 'countdown') this.pause();
   };
 

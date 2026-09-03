@@ -7,9 +7,8 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { CharacterDef } from '../core/types';
+import type { CharacterDef, CrestStyle, FinStyle } from '../core/types';
 import { lerp, smoothstep } from '../core/math';
-import { CHARACTERS } from './roster';
 
 export interface KartModelParts {
   root: THREE.Group;
@@ -250,6 +249,132 @@ function buildWheelGeometry(radius: number, width: number): WheelGeos {
   return { tyre: tyreBatch.build(), rim: rimBatch.build() };
 }
 
+/**
+ * Rear wings. Each racer bolts on a different silhouette so the field reads at a
+ * glance from behind, which is the only angle you ever see the others from.
+ */
+function addFin(batch: Batch, style: FinStyle): void {
+  const post = new THREE.BoxGeometry(0.025, 0.11, 0.26);
+  const addPosts = (x: number, y = 0.72, z = 0.72) => {
+    batch.add(post, x, y, z, -0.22, 0, 0);
+    batch.add(post, -x, y, z, -0.22, 0, 0);
+  };
+  switch (style) {
+    case 'none': {
+      // A low lip on the engine cover instead of a wing.
+      const lip = new RoundedBoxGeometry(0.5, 0.05, 0.12, 1, 0.02);
+      batch.add(lip, 0, 0.66, 0.78, -0.5, 0, 0);
+      lip.dispose();
+      break;
+    }
+    case 'blade': {
+      const blade = new RoundedBoxGeometry(0.72, 0.03, 0.16, 1, 0.012);
+      batch.add(blade, 0, 0.82, 0.74, -0.14, 0, 0);
+      blade.dispose();
+      const spine = new THREE.BoxGeometry(0.05, 0.34, 0.2);
+      batch.add(spine, 0, 0.66, 0.76, -0.14, 0, 0);
+      spine.dispose();
+      break;
+    }
+    case 'twin': {
+      const blade = new RoundedBoxGeometry(0.3, 0.03, 0.2, 1, 0.012);
+      batch.add(blade, 0.3, 0.78, 0.74, -0.24, 0, 0);
+      batch.add(blade, -0.3, 0.78, 0.74, -0.24, 0, 0);
+      blade.dispose();
+      addPosts(0.3, 0.66, 0.74);
+      break;
+    }
+    case 'ducktail': {
+      const tail = new RoundedBoxGeometry(0.86, 0.06, 0.3, 1, 0.03);
+      batch.add(tail, 0, 0.62, 0.8, -0.62, 0, 0);
+      tail.dispose();
+      break;
+    }
+    case 'halo': {
+      const ring = new THREE.TorusGeometry(0.3, 0.028, 6, 22);
+      batch.add(ring, 0, 0.86, 0.76, Math.PI / 2 - 0.25, 0, 0);
+      ring.dispose();
+      const stem = new THREE.BoxGeometry(0.05, 0.26, 0.05);
+      batch.add(stem, 0, 0.68, 0.78);
+      stem.dispose();
+      break;
+    }
+    case 'wing':
+    default: {
+      const wing = new RoundedBoxGeometry(0.94, 0.035, 0.24, 1, 0.015);
+      batch.add(wing, 0, 0.71, 0.72, -0.22, 0, 0);
+      wing.dispose();
+      addPosts(0.47);
+      break;
+    }
+  }
+  post.dispose();
+}
+
+/** Helmet toppers. Returns false when the style adds nothing to batch. */
+function addCrest(batch: Batch, style: CrestStyle): boolean {
+  switch (style) {
+    case 'mohawk': {
+      const spike = new THREE.ConeGeometry(0.026, 0.1, 6);
+      for (let i = 0; i < 5; i++) {
+        const t = (i / 4 - 0.5) * 0.22;
+        batch.add(spike, 0, 0.3 - Math.abs(t) * 0.35, t, t * 1.4, 0, 0);
+      }
+      spike.dispose();
+      return true;
+    }
+    case 'antenna': {
+      const rod = new THREE.CylinderGeometry(0.008, 0.008, 0.2, 6);
+      batch.add(rod, 0.05, 0.38, 0.02, 0, 0, -0.2);
+      rod.dispose();
+      const bulb = new THREE.SphereGeometry(0.028, 8, 6);
+      batch.add(bulb, 0.07, 0.48, 0.02);
+      bulb.dispose();
+      return true;
+    }
+    case 'crown': {
+      const band = new THREE.CylinderGeometry(0.1, 0.11, 0.05, 12, 1, true);
+      batch.add(band, 0, 0.3, 0);
+      band.dispose();
+      const point = new THREE.ConeGeometry(0.03, 0.075, 5);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        batch.add(point, Math.cos(a) * 0.085, 0.35, Math.sin(a) * 0.085);
+      }
+      point.dispose();
+      return true;
+    }
+    case 'cap': {
+      const brim = new THREE.CylinderGeometry(0.15, 0.15, 0.018, 16, 1, false, -Math.PI * 0.55, Math.PI * 1.1);
+      batch.add(brim, 0, 0.19, -0.06);
+      brim.dispose();
+      const crown = new THREE.SphereGeometry(0.145, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5);
+      batch.add(crown, 0, 0.185, 0, 0, 0, 0, 1, 0.7, 1);
+      crown.dispose();
+      return true;
+    }
+    case 'toque': {
+      const puff = new THREE.CylinderGeometry(0.13, 0.1, 0.17, 14);
+      batch.add(puff, 0, 0.33, 0);
+      puff.dispose();
+      const top = new THREE.SphereGeometry(0.13, 12, 8);
+      batch.add(top, 0, 0.4, 0, 0, 0, 0, 1, 0.7, 1);
+      top.dispose();
+      return true;
+    }
+    case 'horns': {
+      const horn = new THREE.ConeGeometry(0.045, 0.15, 8);
+      batch.add(horn, 0.12, 0.27, 0.01, 0, 0, 0.5);
+      batch.add(horn, -0.12, 0.27, 0.01, 0, 0, -0.5);
+      horn.dispose();
+      return true;
+    }
+    case 'none':
+    default:
+      return false;
+  }
+}
+
 export function buildKartModel(character: CharacterDef): KartModelPartsEx {
   const root = new THREE.Group();
   root.name = `kart-${character.id}`;
@@ -282,18 +407,21 @@ export function buildKartModel(character: CharacterDef): KartModelPartsEx {
       metalness: 0.45,
       roughness: 0.3,
       emissive: character.accent,
-      emissiveIntensity: 0.32,
+      emissiveIntensity: 0.2,
     }),
   );
-  // Scenes have no environment map, so pure metals fake their ambient reflection with a grey emissive.
+  // Pure metals have almost no diffuse term, so they need something to reflect.
+  // A race scene now supplies an environment probe (fx/EnvironmentProbe), and
+  // this grey emissive only stands in for it on the menu podium and on the low
+  // quality tier - hence the small value, or the two stack and glare.
   const chrome = mat(
-    new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.18, emissive: 0x4a5058, emissiveIntensity: 1 }),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.22, emissive: 0x4a5058, emissiveIntensity: 0.35 }),
   );
   const darkMetal = mat(new THREE.MeshStandardMaterial({ color: 0x3a3f48, metalness: 0.55, roughness: 0.5 }));
   const rubber = mat(new THREE.MeshStandardMaterial({ color: 0x1b1b20, roughness: 0.9, metalness: 0.05 }));
   const tyreMat = mat(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 }));
   const rimMat = mat(
-    new THREE.MeshStandardMaterial({ color: 0xcfd6e0, metalness: 0.7, roughness: 0.3, emissive: 0x2a2e34, emissiveIntensity: 1 }),
+    new THREE.MeshStandardMaterial({ color: 0xcfd6e0, metalness: 0.7, roughness: 0.32, emissive: 0x2a2e34, emissiveIntensity: 0.4 }),
   );
   const seatMat = mat(
     new THREE.MeshStandardMaterial({ color: 0x1c1c23, roughness: 0.88, metalness: 0.05, side: THREE.DoubleSide }),
@@ -325,7 +453,7 @@ export function buildKartModel(character: CharacterDef): KartModelPartsEx {
       roughness: 0.6,
     }),
   );
-  const number = Math.max(1, CHARACTERS.indexOf(character) + 1);
+  const number = character.number ?? 1;
   const plateTex = makeNumberTexture(number, character.accent, character.color);
   textures.add(plateTex);
   const plateMat = mat(new THREE.MeshStandardMaterial({ map: plateTex, roughness: 0.45, metalness: 0.05 }));
@@ -396,13 +524,7 @@ export function buildKartModel(character: CharacterDef): KartModelPartsEx {
 
   // --- accent parts (spoiler, bumper, glowing strips) -----------------------
   const accentBatch = new Batch();
-  const wing = new RoundedBoxGeometry(0.94, 0.035, 0.24, 1, 0.015);
-  accentBatch.add(wing, 0, 0.71, 0.72, -0.22, 0, 0);
-  wing.dispose();
-  const plate = new THREE.BoxGeometry(0.025, 0.11, 0.26);
-  accentBatch.add(plate, 0.47, 0.72, 0.72, -0.22, 0, 0);
-  accentBatch.add(plate, -0.47, 0.72, 0.72, -0.22, 0, 0);
-  plate.dispose();
+  addFin(accentBatch, character.fin ?? 'wing');
   const bumperArc = Math.PI * 0.9;
   const bumper = new THREE.TorusGeometry(0.33, 0.03, 6, 18, bumperArc);
   bumper.rotateX(Math.PI / 2);
@@ -551,8 +673,25 @@ export function buildKartModel(character: CharacterDef): KartModelPartsEx {
   const stripe = makeMesh(stripeGeo, accentMaterial, 'helmetStripe');
   stripe.castShadow = false;
   driverHead.add(stripe);
+  const crestBatch = new Batch();
+  if (addCrest(crestBatch, character.crest ?? 'none')) {
+    const crest = makeMesh(track(crestBatch.build()), accentMaterial, 'crest');
+    crest.castShadow = false;
+    driverHead.add(crest);
+  }
   driver.add(driverHead);
   root.add(driver);
+
+  // Body scale lives on an inner group: Kart rewrites root.scale every frame for
+  // squash, squish and shrink, so anything set on root itself would be lost.
+  const scale = character.kartScale ?? 1;
+  if (Math.abs(scale - 1) > 1e-3) {
+    const shell = new THREE.Group();
+    shell.name = 'shell';
+    shell.scale.setScalar(scale);
+    for (const child of [...root.children]) shell.add(child);
+    root.add(shell);
+  }
 
   const dispose = () => {
     for (const g of geometries) g.dispose();

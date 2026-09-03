@@ -1,7 +1,12 @@
 /**
- * Keyboard + Gamepad input. `update()` is called once per render frame and
- * returns a reused InputState. Edge fields (useItem, pause, confirm, back,
+ * Keyboard + Gamepad + touch input. `update()` is called once per render frame
+ * and returns a reused InputState. Edge fields (useItem, pause, confirm, back,
  * menu*) are true only for the call right after the press.
+ *
+ * Touch is a third channel rather than a separate path: ui/TouchControls writes
+ * into `touch` from pointer events, and update() folds it in with the other two.
+ * That keeps one definition of "what the player is doing" for every device, and
+ * means a phone with a Bluetooth pad connected can use both at once.
  */
 import { createEmptyInput, type InputState } from '../core/types';
 import { clamp } from '../core/math';
@@ -51,12 +56,45 @@ const STEER_RAMP_UP_TIME = 0.12;
 const STEER_RAMP_DOWN_TIME = 0.08;
 const MENU_STICK_THRESHOLD = 0.55;
 
+/**
+ * Written by ui/TouchControls, read once per frame by InputManager. Edge fields
+ * are latched by the control and consumed (cleared) by the next update().
+ */
+export interface TouchChannel {
+  throttle: number;
+  brake: number;
+  /** Analog steer target in [-1, 1]. Ramped exactly like the keyboard. */
+  steerTarget: number;
+  drift: boolean;
+  useItemHeld: boolean;
+  lookBack: boolean;
+  useItemEdge: boolean;
+  pauseEdge: boolean;
+  confirmEdge: boolean;
+  backEdge: boolean;
+}
+
 export class InputManager {
+  /** Touch surface state. See TouchChannel. */
+  readonly touch: TouchChannel = {
+    throttle: 0,
+    brake: 0,
+    steerTarget: 0,
+    drift: false,
+    useItemHeld: false,
+    lookBack: false,
+    useItemEdge: false,
+    pauseEdge: false,
+    confirmEdge: false,
+    backEdge: false,
+  };
+
   private readonly state: InputState = createEmptyInput();
   private readonly held = new Set<string>();
   /** Codes pressed since the previous update (consumed for edges). */
   private readonly pressed = new Set<string>();
   private keyboardSteer = 0;
+  private touchSteer = 0;
   private lastTime = 0;
 
   private padButtons: boolean[] = new Array<boolean>(PAD_BUTTON_COUNT).fill(false);
@@ -91,6 +129,10 @@ export class InputManager {
     const kbBrake = this.anyHeld(KEY_BRAKE) ? 1 : 0;
     const steerTarget = (this.anyHeld(KEY_RIGHT) ? 1 : 0) - (this.anyHeld(KEY_LEFT) ? 1 : 0);
     this.keyboardSteer = rampToward(this.keyboardSteer, steerTarget, dt);
+
+    // --- touch -----------------------------------------------------------------
+    const touch = this.touch;
+    this.touchSteer = rampToward(this.touchSteer, clamp(touch.steerTarget, -1, 1), dt);
 
     // --- gamepad ---------------------------------------------------------------
     const pad = this.getPad();
@@ -127,17 +169,17 @@ export class InputManager {
     const padEdge = this.padEdge;
 
     // --- compose -----------------------------------------------------------------
-    s.throttle = Math.max(kbThrottle, padThrottle);
-    s.brake = Math.max(kbBrake, padBrake);
-    s.steer = clamp(this.keyboardSteer + padSteer, -1, 1);
-    s.drift = this.anyHeld(KEY_DRIFT) || buttons[PAD_A] || buttons[PAD_RB];
-    s.useItemHeld = this.anyHeld(KEY_ITEM) || buttons[PAD_X] || buttons[PAD_LB];
-    s.lookBack = this.anyHeld(KEY_LOOKBACK) || buttons[PAD_Y];
+    s.throttle = Math.max(kbThrottle, padThrottle, touch.throttle);
+    s.brake = Math.max(kbBrake, padBrake, touch.brake);
+    s.steer = clamp(this.keyboardSteer + padSteer + this.touchSteer, -1, 1);
+    s.drift = this.anyHeld(KEY_DRIFT) || buttons[PAD_A] || buttons[PAD_RB] || touch.drift;
+    s.useItemHeld = this.anyHeld(KEY_ITEM) || buttons[PAD_X] || buttons[PAD_LB] || touch.useItemHeld;
+    s.lookBack = this.anyHeld(KEY_LOOKBACK) || buttons[PAD_Y] || touch.lookBack;
 
-    s.useItem = this.anyPressed(KEY_ITEM) || padEdge(PAD_X) || padEdge(PAD_LB);
-    s.pause = this.anyPressed(KEY_PAUSE) || padEdge(PAD_START);
-    s.confirm = this.anyPressed(KEY_CONFIRM) || padEdge(PAD_A);
-    s.back = this.anyPressed(KEY_BACK) || padEdge(PAD_B);
+    s.useItem = this.anyPressed(KEY_ITEM) || padEdge(PAD_X) || padEdge(PAD_LB) || touch.useItemEdge;
+    s.pause = this.anyPressed(KEY_PAUSE) || padEdge(PAD_START) || touch.pauseEdge;
+    s.confirm = this.anyPressed(KEY_CONFIRM) || padEdge(PAD_A) || touch.confirmEdge;
+    s.back = this.anyPressed(KEY_BACK) || padEdge(PAD_B) || touch.backEdge;
     s.menuUp =
       this.anyPressed(KEY_THROTTLE) ||
       padEdge(PAD_UP) ||
@@ -156,7 +198,27 @@ export class InputManager {
       (this.padStickMenuX > 0 && this.prevPadStickMenuX <= 0);
 
     this.pressed.clear();
+    touch.useItemEdge = false;
+    touch.pauseEdge = false;
+    touch.confirmEdge = false;
+    touch.backEdge = false;
     return s;
+  }
+
+  /** Drops every touch input. Called when the on-screen controls are hidden. */
+  clearTouch(): void {
+    const t = this.touch;
+    t.throttle = 0;
+    t.brake = 0;
+    t.steerTarget = 0;
+    t.drift = false;
+    t.useItemHeld = false;
+    t.lookBack = false;
+    t.useItemEdge = false;
+    t.pauseEdge = false;
+    t.confirmEdge = false;
+    t.backEdge = false;
+    this.touchSteer = 0;
   }
 
   dispose(): void {
@@ -224,6 +286,7 @@ export class InputManager {
 
   private readonly onBlur = (): void => {
     this.held.clear();
+    this.clearTouch();
   };
 
   private readonly onVisibility = (): void => {

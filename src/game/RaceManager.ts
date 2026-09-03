@@ -60,6 +60,12 @@ export class RaceManager {
   readonly totalLaps: number;
   readonly difficulty: Difficulty;
 
+  /**
+   * Online races seat karts by kart id so every client lays out the same grid.
+   * Offline, the player is dropped at the back for a comeback drive.
+   */
+  private readonly gridByKartId: boolean;
+
   private phase: RacePhase = 'grid';
   private time = 0;
   private countdownTimer = 0;
@@ -84,6 +90,7 @@ export class RaceManager {
   ) {
     this.totalLaps = Math.max(1, Math.floor(settings.laps));
     this.difficulty = settings.difficulty;
+    this.gridByKartId = !!settings.online;
 
     const cps = track.checkpoints;
     if (cps.length >= 2) {
@@ -173,7 +180,7 @@ export class RaceManager {
       const s = tr.kart.state;
       out.push({
         kartId: s.id,
-        name: s.character.name,
+        name: s.displayName ?? s.character.name,
         color: s.character.color,
         place: s.place,
         finishTime: s.finished ? s.finishTime : -1,
@@ -198,7 +205,9 @@ export class RaceManager {
     for (const tr of this.trackers) {
       const s = tr.kart.state;
       let slotIndex: number;
-      if (s.isPlayer) {
+      if (this.gridByKartId) {
+        slotIndex = s.id % grid.length;
+      } else if (s.isPlayer) {
         slotIndex = Math.min(PLAYER_GRID_SLOT, grid.length - 1);
       } else {
         if (aiSlot === Math.min(PLAYER_GRID_SLOT, grid.length - 1)) aiSlot++;

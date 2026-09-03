@@ -6,6 +6,7 @@ import type { CharacterDef, Difficulty, InputState, RaceSettings, TrackDefinitio
 import { events } from '../core/events';
 import { GAME_TITLE, DEFAULT_LAPS } from '../core/constants';
 import { button, cssHex, cssRgba, el, TextField } from './dom';
+import { trackPoster } from './trackPoster';
 
 export type MenuPanel = 'title' | 'characterSelect' | 'trackSelect';
 
@@ -23,10 +24,22 @@ const STAT_KEYS: readonly { key: keyof CharacterDef['stats']; label: string }[] 
   { key: 'weight', label: 'WGT' },
   { key: 'miniTurbo', label: 'MT' },
 ];
+/** Fallback when the grid has not been laid out yet (first frame, or hidden). */
 const CHAR_COLUMNS = 4;
+
+/** How many cards the grid is actually showing across right now. Media queries
+ *  change this with the window, so up/down must ask rather than assume. */
+function columnsOf(grid: HTMLElement | null, fallback: number): number {
+  if (!grid) return fallback;
+  const cols = getComputedStyle(grid).gridTemplateColumns.split(' ').filter((c) => c !== 'none' && c !== '');
+  return cols.length > 0 ? cols.length : fallback;
+}
+const MIN_LAPS = 1;
+const MAX_LAPS = 9;
 
 export class MainMenu {
   onStart: ((settings: RaceSettings) => void) | null = null;
+  onPlayOnline: (() => void) | null = null;
   onHighlight: ((characterId: string) => void) | null = null;
   onPanelChange: ((panel: MenuPanel) => void) | null = null;
 
@@ -47,8 +60,12 @@ export class MainMenu {
   private readonly diffButtons: HTMLElement[] = [];
   private difficultyIndex = 1;
   private readonly diffBlurb: TextField;
+  /** User-chosen race length; persists across circuits until they change it. */
+  private lapsCount = DEFAULT_LAPS;
+  private readonly lapsWrap: HTMLElement;
+  private readonly lapsLabel: TextField;
   private readonly startButton: HTMLElement;
-  /** 0 = track cards row, 1 = difficulty row, 2 = start button. */
+  /** 0 = track cards row, 1 = difficulty row, 2 = laps row, 3 = start button. */
   private trackRow = 0;
 
   constructor(
@@ -57,6 +74,7 @@ export class MainMenu {
     private readonly tracks: readonly TrackDefinition[],
   ) {
     this.rootNode = el('div', 'screen menu hidden', undefined, root);
+    this.lapsCount = tracks[0] && tracks[0].laps > 0 ? tracks[0].laps : DEFAULT_LAPS;
 
     // ---------------------------------------------------------------- title
     const title = el('section', 'panel-title-screen', undefined, this.rootNode);
@@ -68,8 +86,15 @@ export class MainMenu {
       line.textContent = w;
     });
     el('div', 'logo-sub', 'ARCADE GRAND PRIX', title);
+    const modes = el('div', 'title-modes', undefined, title);
+    const single = button('GRAND PRIX', 'primary', () => this.goTo('characterSelect', true));
+    const online = button('PLAY ONLINE', '', () => {
+      events.emit('ui:select', {});
+      this.onPlayOnline?.();
+    });
+    modes.append(single, online);
     const prompt = el('div', 'press-start', undefined, title);
-    el('span', 'press-start-text', 'PRESS ENTER / CLICK TO START', prompt);
+    el('span', 'press-start-text', 'ENTER FOR A GRAND PRIX · O TO RACE FRIENDS', prompt);
     const legend = el('div', 'controls-legend glass', undefined, title);
     const keys: [string, string][] = [
       ['W / ↑', 'Throttle'],
@@ -86,8 +111,10 @@ export class MainMenu {
       el('kbd', '', k, row);
       el('span', '', v, row);
     }
-    el('div', 'version', 'v1.0 · Three.js · 100% procedural · gamepad supported', title);
-    title.addEventListener('click', () => {
+    el('div', 'version', 'v1.0 · Three.js · online multiplayer · gamepad supported', title);
+    title.addEventListener('click', (ev) => {
+      // The mode buttons stop propagation themselves; this is the "click anywhere" path.
+      if (ev.defaultPrevented) return;
       if (this.panel === 'title') this.goTo('characterSelect', true);
     });
 
@@ -139,7 +166,8 @@ export class MainMenu {
       this.trackCards.push(card);
     });
     const trFoot = el('footer', 'select-footer glass', undefined, tr);
-    const diffWrap = el('div', 'difficulty', undefined, trFoot);
+    const rulesWrap = el('div', 'race-rules', undefined, trFoot);
+    const diffWrap = el('div', 'difficulty', undefined, rulesWrap);
     el('div', 'difficulty-label', 'DIFFICULTY', diffWrap);
     const seg = el('div', 'segmented', undefined, diffWrap);
     DIFFICULTIES.forEach((d, i) => {
@@ -157,11 +185,25 @@ export class MainMenu {
       this.diffButtons.push(b);
     });
     this.diffBlurb = new TextField(el('div', 'difficulty-blurb', '', diffWrap));
+
+    // Laps: a race setting, not a per-track fixed value - it carries over
+    // between circuits so picking a new track never quietly resets it.
+    this.lapsWrap = el('div', 'difficulty laps-picker', undefined, rulesWrap);
+    el('div', 'difficulty-label', 'LAPS', this.lapsWrap);
+    const lapsRow = el('div', 'step-row', undefined, this.lapsWrap);
+    lapsRow.appendChild(button('−', 'tiny', () => this.bumpLaps(-1)));
+    this.lapsLabel = new TextField(el('b', 'step-value', String(this.lapsCount), lapsRow));
+    lapsRow.appendChild(button('+', 'tiny', () => this.bumpLaps(1)));
+    this.lapsWrap.addEventListener('pointerenter', () => {
+      this.trackRow = 2;
+      this.refreshTrackFocus();
+    });
+
     const trActions = el('div', 'actions', undefined, trFoot);
     trActions.appendChild(button('← BACK', 'ghost', () => this.goTo('characterSelect', true)));
     this.startButton = button('START RACE', 'primary start', () => this.start());
     this.startButton.addEventListener('pointerenter', () => {
-      this.trackRow = 2;
+      this.trackRow = 3;
       this.refreshTrackFocus();
     });
     trActions.appendChild(this.startButton);
@@ -208,21 +250,23 @@ export class MainMenu {
         break;
       case 'characterSelect': {
         const n = this.characters.length;
+        const cols = columnsOf(this.charCards[0]?.parentElement ?? null, CHAR_COLUMNS);
         if (input.menuLeft) this.setCharacter((this.charIndex - 1 + n) % n, true);
         else if (input.menuRight) this.setCharacter((this.charIndex + 1) % n, true);
-        else if (input.menuUp) this.setCharacter((this.charIndex - CHAR_COLUMNS + n) % n, true);
-        else if (input.menuDown) this.setCharacter((this.charIndex + CHAR_COLUMNS) % n, true);
+        else if (input.menuUp) this.setCharacter((this.charIndex - cols + n * cols) % n, true);
+        else if (input.menuDown) this.setCharacter((this.charIndex + cols) % n, true);
         if (input.confirm) this.goTo('trackSelect', true);
         else if (input.back) this.goTo('title', true);
         break;
       }
       case 'trackSelect': {
+        const rows = 4;
         if (input.menuUp) {
-          this.trackRow = (this.trackRow + 2) % 3;
+          this.trackRow = (this.trackRow + rows - 1) % rows;
           this.refreshTrackFocus();
           events.emit('ui:move', {});
         } else if (input.menuDown) {
-          this.trackRow = (this.trackRow + 1) % 3;
+          this.trackRow = (this.trackRow + 1) % rows;
           this.refreshTrackFocus();
           events.emit('ui:move', {});
         } else if (input.menuLeft || input.menuRight) {
@@ -232,6 +276,8 @@ export class MainMenu {
             this.setTrack((this.trackIndex + dir + n) % n, true);
           } else if (this.trackRow === 1) {
             this.setDifficulty((this.difficultyIndex + dir + 3) % 3, true);
+          } else if (this.trackRow === 2) {
+            this.bumpLaps(dir);
           } else {
             events.emit('ui:move', {});
           }
@@ -287,6 +333,10 @@ export class MainMenu {
     this.charTagline.set(def.tagline);
     if (changed) {
       if (sound) events.emit('ui:move', {});
+      // Keyboard/gamepad can move focus outside the scrolled viewport of a
+      // grid that no longer fits on screen; a click never needs this (the
+      // card was already visible to be clicked).
+      if (sound) this.charCards[i]?.scrollIntoView({ block: 'nearest' });
       this.onHighlight?.(def.id);
     }
   }
@@ -297,7 +347,10 @@ export class MainMenu {
     this.trackIndex = i;
     this.trackCards.forEach((c, k) => c.classList.toggle('selected', k === i));
     this.refreshTrackFocus();
-    if (changed && sound) events.emit('ui:move', {});
+    if (changed && sound) {
+      events.emit('ui:move', {});
+      this.trackCards[i]?.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   private setDifficulty(i: number, sound = false): void {
@@ -314,7 +367,16 @@ export class MainMenu {
     this.diffButtons.forEach((b, k) =>
       b.classList.toggle('focused', this.trackRow === 1 && k === this.difficultyIndex),
     );
-    this.startButton.classList.toggle('focused', this.trackRow === 2);
+    this.lapsWrap.classList.toggle('focused', this.trackRow === 2);
+    this.startButton.classList.toggle('focused', this.trackRow === 3);
+  }
+
+  private bumpLaps(delta: number): void {
+    const next = Math.max(MIN_LAPS, Math.min(MAX_LAPS, this.lapsCount + delta));
+    if (next === this.lapsCount) return;
+    this.lapsCount = next;
+    this.lapsLabel.set(String(next));
+    events.emit('ui:move', {});
   }
 
   private start(): void {
@@ -326,7 +388,7 @@ export class MainMenu {
       characterId: character.id,
       trackId: track.id,
       difficulty: DIFFICULTIES[this.difficultyIndex],
-      laps: track.laps > 0 ? track.laps : DEFAULT_LAPS,
+      laps: this.lapsCount,
     });
   }
 
@@ -367,12 +429,9 @@ export class MainMenu {
     card.style.setProperty('--card-accent', cssHex(env.skyHorizon));
     card.style.setProperty('--card-glow', cssRgba(env.skyHorizon, 0.5));
     const art = el('div', 'track-art', undefined, card);
-    art.style.background = `linear-gradient(180deg, ${cssHex(env.skyTop)} 0%, ${cssHex(env.skyHorizon)} 55%, ${cssHex(
-      t.palette.ground,
-    )} 56%, ${cssHex(t.palette.ground)} 100%)`;
-    const road = el('div', 'track-art-road', undefined, art);
-    road.style.background = cssHex(t.palette.road);
-    road.style.borderColor = cssHex(t.palette.curb);
+    art.style.background = cssHex(env.skyHorizon);
+    // Painted scene for this circuit with its real centerline projected into it.
+    art.appendChild(trackPoster(t, 520, 220));
     el('div', 'track-theme-pill pill', t.theme.toUpperCase(), art);
     const body = el('div', 'track-body', undefined, card);
     const nameRow = el('div', 'track-name-row', undefined, body);

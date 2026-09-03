@@ -253,9 +253,13 @@ export function makeGroundTexture(theme: TrackTheme, base: number): THREE.Canvas
       ? { color: 0x8fc93e, strength: 0.3 }
       : theme === 'desert'
         ? { color: 0xb87a3c, strength: 0.3 }
-        : theme === 'snow'
-          ? { color: 0xcfe3f5, strength: 0.25 }
-          : undefined;
+        : theme === 'beach'
+          ? { color: 0xf0dcae, strength: 0.28 }
+          : theme === 'volcano'
+            ? { color: 0x2a1f1c, strength: 0.35 }
+            : theme === 'snow'
+              ? { color: 0xcfe3f5, strength: 0.25 }
+              : undefined;
   fillNoise(ctx, S, S, base, amount, 1.3, 7.7, tint);
   const rng = seededRandom(99);
   if (theme === 'grassland') {
@@ -290,6 +294,47 @@ export function makeGroundTexture(theme: TrackTheme, base: number): THREE.Canvas
       ctx.moveTo(0, y);
       for (let x = 0; x <= S; x += 16) ctx.lineTo(x, y + Math.sin(x * 0.1 + i) * 4);
       ctx.stroke();
+    }
+  } else if (theme === 'beach') {
+    // wet-sand ripples plus scattered shell flecks
+    ctx.globalAlpha = 0.14;
+    ctx.strokeStyle = 'rgba(150,110,60,1)';
+    for (let i = 0; i < 34; i++) {
+      ctx.beginPath();
+      const y = rng() * S;
+      ctx.moveTo(0, y);
+      for (let x = 0; x <= S; x += 16) ctx.lineTo(x, y + Math.sin(x * 0.08 + i) * 5);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.5;
+    for (let i = 0; i < 260; i++) {
+      ctx.fillStyle = rng() < 0.5 ? 'rgba(255,250,235,0.8)' : 'rgba(190,160,120,0.7)';
+      ctx.fillRect(rng() * S, rng() * S, 1 + rng() * 2, 1 + rng());
+    }
+  } else if (theme === 'volcano') {
+    // cracked basalt: a dark web with a faint ember glow in the fissures
+    ctx.globalAlpha = 0.55;
+    for (let i = 0; i < 26; i++) {
+      let x = rng() * S;
+      let y = rng() * S;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (let k = 0; k < 5; k++) {
+        x += (rng() - 0.5) * 70;
+        y += (rng() - 0.5) * 70;
+        ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = 'rgba(12,8,8,0.85)';
+      ctx.lineWidth = 2.6;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,120,40,0.22)';
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.4;
+    for (let i = 0; i < 420; i++) {
+      ctx.fillStyle = rng() < 0.75 ? 'rgba(30,24,24,0.9)' : 'rgba(120,60,40,0.8)';
+      ctx.fillRect(rng() * S, rng() * S, 1 + rng() * 2, 1 + rng() * 2);
     }
   } else if (theme === 'snow') {
     ctx.globalAlpha = 0.35;

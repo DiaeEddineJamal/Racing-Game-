@@ -79,6 +79,9 @@ export class HUD {
   private lastPlace = 0;
   private readonly lapText: TextField;
   private readonly timerText: TextField;
+  private readonly netChip: HTMLElement;
+  private readonly netText: TextField;
+  private netShown = -1;
   private readonly speedText: TextField;
   private readonly gaugeFill: SVGCircleElement;
   private gaugeValue = -1;
@@ -114,6 +117,11 @@ export class HUD {
     el('span', 'hud-lap-label', 'LAP', lapBox);
     this.lapText = new TextField(el('span', 'hud-lap-value', '', lapBox));
     this.timerText = new TextField(el('div', 'hud-timer glass', '0:00.000', topRight));
+    // Online only: a bad connection should look like a bad connection, not like
+    // karts behaving strangely.
+    this.netChip = el('div', 'hud-net glass hidden', undefined, topRight);
+    el('span', 'hud-net-dot', '', this.netChip);
+    this.netText = new TextField(el('span', 'hud-net-value', '', this.netChip));
 
     // Bottom-left: place
     this.placeNode = el('div', 'hud-place', undefined, this.rootNode);
@@ -164,6 +172,26 @@ export class HUD {
 
   setTrack(track: ITrack | null): void {
     this.minimap.setTrack(track);
+  }
+
+  /** Round-trip time for an online race, or null offline (hides the chip). */
+  setNetwork(pingMs: number | null): void {
+    if (pingMs === null) {
+      if (this.netShown !== -1) {
+        this.netShown = -1;
+        this.netChip.classList.add('hidden');
+      }
+      return;
+    }
+    const rounded = Math.round(pingMs);
+    // Only repaint on a real change; this runs every frame.
+    if (Math.abs(rounded - this.netShown) < 4) return;
+    this.netShown = rounded;
+    this.netChip.classList.remove('hidden');
+    this.netText.set(`${rounded} ms`);
+    this.netChip.classList.toggle('good', rounded < 80);
+    this.netChip.classList.toggle('fair', rounded >= 80 && rounded < 160);
+    this.netChip.classList.toggle('poor', rounded >= 160);
   }
 
   show(): void {

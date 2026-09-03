@@ -234,6 +234,13 @@ export class ItemManager implements IItemManager {
    */
   readonly debugCounts = { pickup: 0, use: 0, hit: 0, destroyed: 0, rowPassEmpty: 0, explosion: 0 };
 
+  /**
+   * Online play: returns true for karts this client simulates. Damage is only
+   * ever applied to those, so two clients can never both decide the same kart
+   * was hit. Null in single player, where this client owns everything.
+   */
+  owns: ((kartId: number) => boolean) | null = null;
+
   private readonly particles: IParticleSystem | null;
   private track: ITrack | null = null;
   private karts: readonly IKart[] = [];
@@ -478,6 +485,7 @@ export class ItemManager implements IItemManager {
       }
       rec.prevT = s.trackT;
       if (!emptyHanded || s.isSpinning) continue;
+      if (this.owns && !this.owns(s.id)) continue;
       for (const b of this.boxes) {
         if (!b.active || b.scale < 0.5) continue;
         const dx = s.position.x - b.world.x;
@@ -662,6 +670,7 @@ export class ItemManager implements IItemManager {
     for (const other of this.karts) {
       if (other === user) continue;
       const os = other.state;
+      if (this.owns && !this.owns(os.id)) continue;
       if (os.isInvincible || os.finished) continue;
       other.applyShrink(6);
       if (!os.isAirborne) other.applyHit('lightning', uid);
@@ -848,6 +857,29 @@ export class ItemManager implements IItemManager {
       events.emit('item:destroyed', { item: h.reportType, position: h.position.clone() });
     }
     this.removeHazard(index);
+  }
+
+  /**
+   * Online: another client reported that one of `ownerId`'s projectiles hit it.
+   * Removes our copy of that projectile so the shell does not fly on forever on
+   * screens other than the victim's. Matched by owner, kind and proximity - ids
+   * are local, so position is the only thing both sides agree on.
+   */
+  killHazardNear(ownerId: number, kind: ItemType, x: number, z: number, radius = 14): void {
+    let best = -1;
+    let bestDist = radius * radius;
+    for (let i = 0; i < this.hazards.length; i++) {
+      const h = this.hazards[i];
+      if (h.ownerId !== ownerId || h.reportType !== kind) continue;
+      const dx = h.position.x - x;
+      const dz = h.position.z - z;
+      const d = dx * dx + dz * dz;
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    }
+    if (best >= 0) this.destroyHazard(best, this.breakPresetFor(this.hazards[best].kind), true);
   }
 
   private breakPresetFor(kind: HazardKind): 'shellBreak' | 'bananaSplat' {
@@ -1123,6 +1155,7 @@ export class ItemManager implements IItemManager {
       const rr = KART_RADIUS + h.radius;
       for (const kart of this.karts) {
         const s = kart.state;
+        if (this.owns && !this.owns(s.id)) continue;
         if (s.id === h.ownerId && h.age < OWNER_GRACE) continue;
         if (s.isSpinning || s.finished) continue;
         const dx = s.position.x - h.position.x;
@@ -1205,6 +1238,7 @@ export class ItemManager implements IItemManager {
   private explode(position: THREE.Vector3, ownerId: number, reportType: ItemType, cause: 'blue_shell' | 'explosion'): void {
     for (const kart of this.karts) {
       const s = kart.state;
+      if (this.owns && !this.owns(s.id)) continue;
       const d = s.position.distanceTo(position);
       if (d > EXPLOSION_RADIUS + KART_RADIUS) continue;
       if (s.isInvincible) continue;
@@ -1280,6 +1314,7 @@ export class ItemManager implements IItemManager {
         for (const other of this.karts) {
           if (other === rec.kart) continue;
           const os = other.state;
+          if (this.owns && !this.owns(os.id)) continue;
           if (os.isSpinning || os.finished) continue;
           const rr = KART_RADIUS + 0.45;
           if (m.position.distanceToSquared(os.position) > rr * rr) continue;

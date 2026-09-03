@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import type { BoostSource, IKart, ItemType } from '../core/types';
 import { events } from '../core/events';
+import type { GameEvents } from '../core/events';
 import { clamp01, smoothstep } from '../core/math';
 import { midiToFreq, noiseBuffer, playChord, playNoiseBurst, playSequence, playTone } from './synth';
 
@@ -130,50 +131,61 @@ export class SfxBank {
   private readonly ctx: AudioContext;
   private readonly buses: SfxBuses;
   private readonly unsubs: (() => void)[] = [];
+  private readonly skip: Set<string>;
   private rouletteCount = 0;
   private lastWrongWay = -10;
   private disposed = false;
 
-  constructor(ctx: AudioContext, buses: SfxBuses) {
+  /**
+   * `skip` lists event names handled by the recorded sample layer. Those events
+   * are ignored here so a sound is never played twice.
+   */
+  constructor(ctx: AudioContext, buses: SfxBuses, skip: readonly string[] = []) {
     this.ctx = ctx;
     this.buses = buses;
+    this.skip = new Set(skip);
     this.subscribe();
   }
 
   private subscribe(): void {
     const u = this.unsubs;
-    u.push(events.on('kart:hop', (e) => this.hop(e.kartId)));
-    u.push(events.on('kart:land', (e) => this.land(e.kartId, e.impact)));
-    u.push(events.on('kart:driftStart', (e) => this.driftStart(e.kartId)));
-    u.push(events.on('kart:driftStage', (e) => this.driftStage(e.kartId, e.stage)));
-    u.push(events.on('kart:driftEnd', (e) => this.driftEnd(e.kartId, e.boostStage)));
-    u.push(events.on('kart:boost', (e) => this.boost(e.kartId, e.source, e.strength)));
-    u.push(events.on('kart:collision', (e) => this.collision(e.kartId, e.otherId, e.impulse, e.position)));
-    u.push(events.on('kart:spin', (e) => this.spin(e.kartId, e.cause)));
-    u.push(events.on('kart:squish', (e) => this.squish(e.kartId)));
-    u.push(events.on('kart:shrink', (e) => this.shrink(e.kartId, true)));
-    u.push(events.on('kart:unshrink', (e) => this.shrink(e.kartId, false)));
-    u.push(events.on('item:pickup', (e) => this.itemPickup(e.position, e.isPlayer)));
-    u.push(events.on('item:rouletteTick', (e) => this.rouletteTick(e.isPlayer)));
-    u.push(events.on('item:rouletteEnd', (e) => this.rouletteEnd(e.isPlayer)));
-    u.push(events.on('item:use', (e) => this.itemUse(e.item, e.position, e.isPlayer)));
-    u.push(events.on('item:hit', (e) => this.itemHit(e.item, e.position, e.isPlayer)));
-    u.push(events.on('item:destroyed', (e) => this.itemDestroyed(e.item, e.position)));
-    u.push(events.on('item:shellBounce', (e) => this.shellBounce(e.position)));
-    u.push(events.on('item:explosion', (e) => this.explosion(e.position, e.radius)));
-    u.push(events.on('item:lightning', () => this.lightning()));
-    u.push(events.on('item:boxRespawn', (e) => this.boxRespawn(e.position)));
-    u.push(events.on('item:blueShellLaunch', () => this.blueShellLaunch()));
-    u.push(events.on('race:countdown', (e) => this.countdown(e.count)));
-    u.push(events.on('race:start', () => this.raceStart()));
-    u.push(events.on('race:lap', (e) => this.lap(e.kartId, e.isPlayer, e.isFinalLap)));
-    u.push(events.on('race:finish', (e) => this.finish(e.kartId, e.place, e.isPlayer)));
-    u.push(events.on('race:positionChange', (e) => { if (e.isPlayer) this.positionChange(e.from, e.to); }));
-    u.push(events.on('race:wrongWay', (e) => this.wrongWay(e.kartId, e.wrongWay)));
-    u.push(events.on('ui:move', () => this.uiMove()));
-    u.push(events.on('ui:select', () => this.uiSelect()));
-    u.push(events.on('ui:back', () => this.uiBack()));
-    u.push(events.on('ui:error', () => this.uiError()));
+    const skip = this.skip;
+    const on = <K extends keyof GameEvents>(name: K, fn: (e: GameEvents[K]) => void): void => {
+      if (skip.has(name)) return;
+      u.push(events.on(name, fn));
+    };
+    on('kart:hop', (e) => this.hop(e.kartId));
+    on('kart:land', (e) => this.land(e.kartId, e.impact));
+    on('kart:driftStart', (e) => this.driftStart(e.kartId));
+    on('kart:driftStage', (e) => this.driftStage(e.kartId, e.stage));
+    on('kart:driftEnd', (e) => this.driftEnd(e.kartId, e.boostStage));
+    on('kart:boost', (e) => this.boost(e.kartId, e.source, e.strength));
+    on('kart:collision', (e) => this.collision(e.kartId, e.otherId, e.impulse, e.position));
+    on('kart:spin', (e) => this.spin(e.kartId, e.cause));
+    on('kart:squish', (e) => this.squish(e.kartId));
+    on('kart:shrink', (e) => this.shrink(e.kartId, true));
+    on('kart:unshrink', (e) => this.shrink(e.kartId, false));
+    on('item:pickup', (e) => this.itemPickup(e.position, e.isPlayer));
+    on('item:rouletteTick', (e) => this.rouletteTick(e.isPlayer));
+    on('item:rouletteEnd', (e) => this.rouletteEnd(e.isPlayer));
+    on('item:use', (e) => this.itemUse(e.item, e.position, e.isPlayer));
+    on('item:hit', (e) => this.itemHit(e.item, e.position, e.isPlayer));
+    on('item:destroyed', (e) => this.itemDestroyed(e.item, e.position));
+    on('item:shellBounce', (e) => this.shellBounce(e.position));
+    on('item:explosion', (e) => this.explosion(e.position, e.radius));
+    on('item:lightning', () => this.lightning());
+    on('item:boxRespawn', (e) => this.boxRespawn(e.position));
+    on('item:blueShellLaunch', () => this.blueShellLaunch());
+    on('race:countdown', (e) => this.countdown(e.count));
+    on('race:start', () => this.raceStart());
+    on('race:lap', (e) => this.lap(e.kartId, e.isPlayer, e.isFinalLap));
+    on('race:finish', (e) => this.finish(e.kartId, e.place, e.isPlayer));
+    on('race:positionChange', (e) => { if (e.isPlayer) this.positionChange(e.from, e.to); });
+    on('race:wrongWay', (e) => this.wrongWay(e.kartId, e.wrongWay));
+    on('ui:move', () => this.uiMove());
+    on('ui:select', () => this.uiSelect());
+    on('ui:back', () => this.uiBack());
+    on('ui:error', () => this.uiError());
   }
 
   dispose(): void {

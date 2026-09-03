@@ -15,9 +15,12 @@ import { events } from '../core/events';
 import { clamp01, damp } from '../core/math';
 import { COMPOSITE_FRAGMENT, COMPOSITE_VERTEX } from './shaders';
 
-const BLOOM_STRENGTH = 0.35;
-const BLOOM_RADIUS = 0.35;
-const BLOOM_THRESHOLD = 0.9;
+// Bloom is a highlight on the brightest things in frame (headlights, boost
+// flames, neon), not a haze over the whole picture: a high threshold keeps
+// ordinary lit surfaces out of it.
+const BLOOM_STRENGTH = 0.18;
+const BLOOM_RADIUS = 0.3;
+const BLOOM_THRESHOLD = 1.05;
 const HIT_EVENT_DECAY = 0.6;
 /** Linear-light grain amplitude at rest / added at full boost (~1% / +0.8%). */
 const GRAIN_REST = 0.012;

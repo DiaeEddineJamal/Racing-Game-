@@ -2,7 +2,12 @@
  * AudioEngine - the public audio facade. Owns the AudioContext and bus graph
  * (master → compressor → destination; music / sfx / engines / ui sub-buses),
  * per-kart engine voices, the event-driven SFX bank, crowd ambience, the music
- * player and the star jingle. Everything is synthesised with the Web Audio API.
+ * player and the star jingle.
+ *
+ * Two layers sit side by side: synthesis for the continuous sounds (engines,
+ * crowd, drift) and downloaded CC0 recordings for the discrete ones (impacts,
+ * pickups, UI, countdown) plus the streamed music. If a download fails the synth
+ * layer covers it, so the game always has audio.
  */
 import * as THREE from 'three';
 import type { IAudioEngine, IKart, MusicTrack } from '../core/types';
@@ -13,6 +18,7 @@ import { dbToGain, softClipCurve } from './synth';
 import { EngineVoice, setListenerPose } from './engine';
 import { Crowd, SfxBank } from './sfx';
 import { MusicPlayer, Sequencer, buildStarJingle, warmMusic } from './music';
+import { SAMPLED_EVENTS, SampleBank, SampledSfx, StreamMusic } from './samples';
 
 const MUSIC_BUS_DB = -6;
 const ENGINES_BUS_GAIN = 0.85;
@@ -45,7 +51,13 @@ export class AudioEngine implements IAudioEngine {
   private uiBus: GainNode | null = null;
 
   private sfx: SfxBank | null = null;
+  private samples: SampleBank | null = null;
+  private sampled: SampledSfx | null = null;
   private music: MusicPlayer | null = null;
+  private stream: StreamMusic | null = null;
+  private circuitId = '';
+  /** Which score is in charge. 'unknown' while the first stream request is in flight. */
+  private musicMode: 'unknown' | 'stream' | 'synth' = 'unknown';
   private crowd: Crowd | null = null;
   private starJingle: Sequencer | null = null;
 
@@ -134,7 +146,7 @@ export class AudioEngine implements IAudioEngine {
     }
     if (ctx.state === 'running' && !this._ready && !this.disposed) {
       this._ready = true;
-      if (this.pendingTrack !== 'none' && this.music) this.music.play(this.pendingTrack);
+      if (this.pendingTrack !== 'none') this.playMusic(this.pendingTrack);
     }
   }
 
@@ -188,9 +200,26 @@ export class AudioEngine implements IAudioEngine {
     this.lastDuckDb = 0;
 
     warmMusic(ctx);
-    this.sfx = new SfxBank(ctx, { sfx: sfxBus, ui: uiBus });
+    // The recorded layer claims its events up front; the synth bank skips those
+    // even while the files are still downloading, so nothing double-triggers
+    // once they land mid-session.
+    this.sfx = new SfxBank(ctx, { sfx: sfxBus, ui: uiBus }, SAMPLED_EVENTS);
+    this.samples = new SampleBank(ctx, sfxBus, uiBus);
+    this.sampled = new SampledSfx(this.samples, this.sfx.listener);
     this.music = new MusicPlayer(ctx, musicBus);
+    this.stream = new StreamMusic(ctx, musicBus);
+    this.stream.setCircuit(this.circuitId || 'menara');
+    this.stream.onReady = () => {
+      this.musicMode = 'stream';
+      this.music?.stop();
+    };
+    this.stream.onFail = () => {
+      if (this.musicMode === 'stream') return;
+      this.musicMode = 'synth';
+      if (this.pendingTrack !== 'none') this.music?.play(this.pendingTrack);
+    };
     this.crowd = new Crowd(ctx, sfxBus);
+    void this.samples.load();
   }
 
   dispose(): void {
@@ -206,6 +235,12 @@ export class AudioEngine implements IAudioEngine {
     this.starFlags.fill(0);
     this.music?.dispose();
     this.music = null;
+    this.stream?.dispose();
+    this.stream = null;
+    this.sampled?.dispose();
+    this.sampled = null;
+    this.samples?.dispose();
+    this.samples = null;
     this.starJingle?.dispose();
     this.starJingle = null;
     this.crowd?.dispose();
@@ -263,6 +298,10 @@ export class AudioEngine implements IAudioEngine {
     L.right.copy(this.camRight);
     this.sfx.karts = karts;
     this.sfx.playerKartId = playerKartId;
+    if (this.sampled) {
+      this.sampled.karts = karts;
+      this.sampled.playerKartId = playerKartId;
+    }
 
     // --- engines ---------------------------------------------------------------
     const engines = this.engines;
@@ -382,14 +421,28 @@ export class AudioEngine implements IAudioEngine {
   // Music & mixer
   // -------------------------------------------------------------------------
 
+  /** Chooses which downloaded score plays during a race. Call before playMusic. */
+  setCircuit(trackId: string): void {
+    this.circuitId = trackId;
+    this.stream?.setCircuit(trackId);
+  }
+
   playMusic(track: MusicTrack): void {
     this.pendingTrack = track;
-    if (!this._ready || !this.music) return;
-    this.music.play(track);
+    if (!this._ready) return;
+    if (this.musicMode === 'synth' || !this.stream) {
+      this.music?.play(track);
+      return;
+    }
+    // While the mode is still 'unknown' the synth stays quiet: the deck's
+    // onReady / onFail callbacks decide which score owns the session, so the two
+    // never overlap during the first request.
+    this.stream.play(track);
   }
 
   stopMusic(): void {
     this.pendingTrack = 'none';
+    this.stream?.stop();
     this.music?.stop();
   }
 

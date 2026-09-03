@@ -22,8 +22,11 @@ export class Minimap {
     this.canvas = el('canvas', 'minimap-canvas', undefined, root);
     this.canvas.width = MINIMAP_SIZE * this.dpr;
     this.canvas.height = MINIMAP_SIZE * this.dpr;
-    this.canvas.style.width = `${MINIMAP_SIZE}px`;
-    this.canvas.style.height = `${MINIMAP_SIZE}px`;
+    // The drawing surface stays at MINIMAP_SIZE while the displayed size comes
+    // from CSS, so phone layouts can shrink the map out of the thumbs' way.
+    // The native size is published on :root rather than on the wrapper, where
+    // an inline value would outrank the stylesheet's own rules for it.
+    document.documentElement.style.setProperty('--minimap-native', `${MINIMAP_SIZE}px`);
     this.ctx = this.canvas.getContext('2d');
     this.layer = document.createElement('canvas');
     this.layer.width = this.canvas.width;

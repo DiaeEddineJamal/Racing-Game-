@@ -1,5 +1,5 @@
 /**
- * FROZEN CONTRACT - shared types and interfaces for Turbo Kart Rush.
+ * FROZEN CONTRACT - shared types and interfaces for Lmongolyan Kart.
  *
  * Every subsystem (game, kart, track, items, ai, audio, fx, ui) implements or
  * consumes the interfaces in this file. Do NOT change existing members here.
@@ -114,6 +114,49 @@ export type SurfaceType = 'road' | 'offroad' | 'boost' | 'wall' | 'void';
 
 export type TrackTheme = 'grassland' | 'desert' | 'snow' | 'beach' | 'volcano' | 'neon';
 
+/**
+ * What is falling out of the sky (or blowing along the ground) on this circuit.
+ * Purely presentational: weather never touches physics or the network.
+ */
+export type WeatherKind = 'none' | 'snow' | 'rain' | 'sand' | 'ash' | 'embers' | 'petals' | 'spray';
+
+export interface WeatherLayerDef {
+  kind: WeatherKind;
+  /** Particle budget before the quality profile scales it. */
+  count: number;
+  /** Volume around the camera the layer fills (metres). */
+  size: { x: number; y: number; z: number };
+  /** Vertical offset of the volume relative to the camera (metres). */
+  yOffset: number;
+  /** Metres per second downward. Negative rises (embers). */
+  fall: number;
+  /** Steady drift, metres per second. */
+  wind: { x: number; z: number };
+  /** How hard gusts push on top of the steady wind (metres per second). */
+  gust: number;
+  /** Lateral wander amplitude in metres - snow flutter, ash tumble. */
+  sway: number;
+  /** Particle world size range in metres. */
+  size0: number;
+  size1: number;
+  color: number;
+  opacity: number;
+  /** 1 is round. >1 stretches into a vertical streak (rain), <1 a horizontal one (blown sand). */
+  stretch: number;
+  /** Additive blending, for anything that glows. */
+  additive?: boolean;
+  /** Fade particles out as they reach the ground instead of at the volume edge. */
+  settle?: boolean;
+}
+
+export interface WeatherDef {
+  layers: WeatherLayerDef[];
+  /** Lightning: mean seconds between strikes. 0 disables. */
+  lightning?: number;
+  /** Flash colour for lightning. */
+  lightningColor?: number;
+}
+
 export interface EnvironmentDef {
   /** Sky gradient colours (hex). */
   skyTop: number;
@@ -130,6 +173,10 @@ export interface EnvironmentDef {
   ambientSky: number;
   ambientGround: number;
   ambientIntensity: number;
+  /** Weather falling on this circuit. Absent means clear skies. */
+  weather?: WeatherDef;
+  /** Tone mapping exposure override for this circuit (default 1.05). */
+  exposure?: number;
 }
 
 export interface TrackDefinition {
@@ -283,7 +330,21 @@ export interface CharacterDef {
   stats: CharacterStats;
   /** Short flavour text for character select. */
   tagline: string;
+  /** Rear wing bolted onto the kart. Each racer gets a different silhouette. */
+  fin?: FinStyle;
+  /** Thing sticking out of the helmet, so racers stay apart at a distance. */
+  crest?: CrestStyle;
+  /** Racing number painted on the plates and shown in the garage. */
+  number?: number;
+  /** Overall body scale: light racers sit in smaller karts, heavies in bigger ones. */
+  kartScale?: number;
 }
+
+/** Rear-wing silhouettes. */
+export type FinStyle = 'none' | 'blade' | 'twin' | 'wing' | 'ducktail' | 'halo';
+
+/** Helmet toppers. Cheap to build and readable from the chase camera. */
+export type CrestStyle = 'none' | 'mohawk' | 'antenna' | 'crown' | 'cap' | 'toque' | 'horns';
 
 export type BoostSource = 'drift' | 'mushroom' | 'golden' | 'pad' | 'start' | 'trick' | 'star';
 
@@ -352,6 +413,11 @@ export interface KartState {
   surface: SurfaceType;
   /** Wheel spin angle for animation. */
   wheelSpin: number;
+  /**
+   * Name shown in the HUD, standings and results. Online races put the player's
+   * own name here; offline it is unset and the character name is used.
+   */
+  displayName?: string;
 }
 
 export interface IKart {
@@ -398,6 +464,13 @@ export interface IItemManager {
   getHazards(): readonly HazardInfo[];
   /** Live positions of item boxes that are currently collectable (for AI). */
   getActiveBoxPositions(): readonly THREE.Vector3[];
+  /**
+   * Online: returns true for karts this client simulates. Damage and item-box
+   * pickups are limited to those. Null / absent means this client owns them all.
+   */
+  owns?: ((kartId: number) => boolean) | null;
+  /** Online: drop our copy of a projectile another client already absorbed. */
+  killHazardNear?(ownerId: number, kind: ItemType, x: number, z: number, radius?: number): void;
   reset(): void;
   dispose(): void;
 }
@@ -428,6 +501,8 @@ export interface IAudioEngine {
   /** Per-frame update: engine pitch per kart, listener position, positional sounds. */
   update(dt: number, karts: readonly IKart[], playerKartId: number, camera: THREE.Camera): void;
   playMusic(track: MusicTrack): void;
+  /** Picks which downloaded score a race uses. Optional; ignored when absent. */
+  setCircuit?(trackId: string): void;
   stopMusic(): void;
   setMasterVolume(v: number): void;
   setMuted(muted: boolean): void;
@@ -503,6 +578,28 @@ export interface RaceSettings {
   trackId: string;
   difficulty: Difficulty;
   laps: number;
+  /** Present for online races; absent for a single-player grand prix. */
+  online?: OnlineSetup;
+}
+
+/** One grid slot in an online race. */
+export interface GridEntry {
+  kartId: number;
+  characterId: string;
+  name: string;
+  /** False for the CPU field. */
+  human: boolean;
+}
+
+export interface OnlineSetup {
+  /** The kart this client drives. */
+  localKartId: number;
+  /** Every kart on the grid, in kart-id order. */
+  grid: GridEntry[];
+  /** True when this client also simulates the CPU racers. */
+  host: boolean;
+  /** Shared so every client builds the same grid. */
+  seed: number;
 }
 
 export interface RaceStanding {

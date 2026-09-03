@@ -12,3 +12,11 @@ dist/
 .vite/
 *.log
 .DS_Store
+
+# test artefacts (tools/browser-check.mjs, tools/mobile-check.mjs)
+shots/
+shots-mobile/
+shots-look/
+
+# local editor tooling state
+.cursor/

@@ -697,7 +697,7 @@ export class ParticleSystem implements IParticleSystem {
     // --- drift sparks at both rear wheels ---------------------------------
     if (st.isDrifting && !st.isAirborne) {
       const stage = st.driftStage;
-      const rate = stage === 0 ? 40 : 110 + stage * 20;
+      const rate = stage === 0 ? 26 : 72 + stage * 14;
       const n = this.take(this.accDrift, idx, rate, dt);
       const c = rgb(DRIFT_STAGE_COLORS[stage]);
       for (let k = 0; k < n; k++) {
@@ -727,7 +727,7 @@ export class ParticleSystem implements IParticleSystem {
       }
 
       // --- tyre smoke (hugs the ground and trails behind the rear wheels) ----
-      const ns = this.take(this.accSmoke, idx, 24, dt);
+      const ns = this.take(this.accSmoke, idx, 14, dt);
       for (let k = 0; k < ns; k++) {
         const side = k % 2 === 0 ? 1 : -1;
         S.x = p.x - fx * 0.75 + rx * 0.55 * side + rnd(-0.08, 0.08);
@@ -757,7 +757,7 @@ export class ParticleSystem implements IParticleSystem {
     if (st.isBoosting) {
       // Short, tight jets: coloured core (never white) with a quick fade so the
       // kart stays readable under bloom.
-      const n = this.take(this.accFlame, idx, 72, dt);
+      const n = this.take(this.accFlame, idx, 46, dt);
       const src = this.boostSource[idx];
       for (let k = 0; k < n; k++) {
         const side = k % 2 === 0 ? 1 : -1;
@@ -793,7 +793,7 @@ export class ParticleSystem implements IParticleSystem {
 
     // --- off-road dust --------------------------------------------------------
     if (st.surface === 'offroad' && speed > 5 && !st.isAirborne) {
-      const n = this.take(this.accDust, idx, 18 + speed * 1.4, dt);
+      const n = this.take(this.accDust, idx, 11 + speed * 0.9, dt);
       for (let k = 0; k < n; k++) {
         const side = k % 2 === 0 ? 1 : -1;
         S.x = p.x - fx * rnd(0.3, 0.8) + rx * 0.5 * side + rnd(-0.2, 0.2);
@@ -820,7 +820,7 @@ export class ParticleSystem implements IParticleSystem {
 
     // --- star sparkle -----------------------------------------------------------
     if (st.isInvincible) {
-      const n = this.take(this.accStar, idx, 70, dt);
+      const n = this.take(this.accStar, idx, 46, dt);
       for (let k = 0; k < n; k++) {
         const a = rnd(0, TAU);
         const rr = rnd(0.5, 1.1) * shrink;

@@ -217,8 +217,9 @@ export class FollowCamera {
   private computeChase(kart: IKart, speedNorm: number, outPos: THREE.Vector3, outLook: THREE.Vector3): void {
     const s = kart.state;
     const yaw = this.yaw;
-    const dist = CHASE_DISTANCE + speedNorm * 0.9 + (s.isBoosting ? 0.45 : 0);
-    const height = CHASE_HEIGHT + speedNorm * 0.2;
+    const portrait = this.camera.aspect > 0 && this.camera.aspect < 0.86;
+    const dist = CHASE_DISTANCE + speedNorm * 0.9 + (s.isBoosting ? 0.45 : 0) + (portrait ? 0.7 : 0);
+    const height = CHASE_HEIGHT + speedNorm * 0.2 + (portrait ? 0.9 : 0);
     // Behind direction for a given yaw (kart forward is (-sin h, 0, -cos h)).
     outPos.set(Math.sin(yaw) * dist, height, Math.cos(yaw) * dist).add(s.position);
 
@@ -228,7 +229,7 @@ export class FollowCamera {
     const h = s.heading;
     this.forward.set(-Math.sin(h), 0, -Math.cos(h));
     outLook.copy(s.position).addScaledVector(this.forward, LOOK_AHEAD * (1 - 2 * this.lookBackBlend));
-    outLook.y += LOOK_UP;
+    outLook.y += LOOK_UP + (portrait ? 0.4 : 0);
   }
 
   private apply(): void {

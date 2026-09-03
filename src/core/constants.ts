@@ -4,7 +4,7 @@
  * private constants in their own folders.
  */
 
-export const GAME_TITLE = 'TURBO KART RUSH';
+export const GAME_TITLE = 'LMONGOLYAN KART';
 
 /** Total karts on the grid (player + AI). */
 export const KART_COUNT = 8;

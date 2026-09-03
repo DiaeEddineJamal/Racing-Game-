@@ -38,7 +38,7 @@ const ORBIT_SPEED = 0.11;
 const KART_SPIN = 0.22;
 const FRAMING_LAMBDA = 3.2;
 const FOG_COLOR = 0x1a1136;
-const DUST_COUNT = 420;
+const DUST_COUNT = 140;
 const DUST_RADIUS = 7;
 const DUST_HEIGHT = 4.5;
 
@@ -88,7 +88,9 @@ void main() {
   float fade = smoothstep(0.0, 0.5, p.y) * (1.0 - smoothstep(uHeight - 1.2, uHeight, p.y));
   vAlpha = fade * (0.35 + 0.65 * fract(aSeed * 7.31));
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
-  gl_PointSize = (2.0 + 4.0 * fract(aSeed * 3.17)) * (220.0 / max(1.0, -mv.z));
+  // Motes, not bokeh: at this camera distance the old 220 factor drew each one
+  // as a 60-140px blob across the whole frame.
+  gl_PointSize = (1.5 + 2.4 * fract(aSeed * 3.17)) * (58.0 / max(1.0, -mv.z));
   gl_Position = projectionMatrix * mv;
 }`;
 
@@ -97,7 +99,7 @@ varying float vAlpha;
 void main() {
   vec2 uv = gl_PointCoord - 0.5;
   float d = length(uv) * 2.0;
-  float a = smoothstep(1.0, 0.2, d) * vAlpha * 0.55;
+  float a = smoothstep(1.0, 0.2, d) * vAlpha * 0.34;
   gl_FragColor = vec4(vec3(0.75, 0.82, 1.0) * a, a);
 }`;
 
@@ -161,7 +163,7 @@ export class MenuBackdrop {
     this.disposables.push(skyGeo, this.skyMaterial);
 
     // Star field ----------------------------------------------------------------
-    const starCount = 420;
+    const starCount = 260;
     const starPos = new Float32Array(starCount * 3);
     for (let i = 0; i < starCount; i++) {
       const theta = Math.random() * Math.PI * 2;
@@ -178,7 +180,7 @@ export class MenuBackdrop {
       size: 1.4,
       sizeAttenuation: false,
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.45,
       depthWrite: false,
       fog: false,
     });
@@ -195,7 +197,7 @@ export class MenuBackdrop {
       roughness: 0.3,
       metalness: 0.75,
       map: gridTex,
-      envMapIntensity: 1.2,
+      envMapIntensity: 0.7,
     });
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
@@ -205,7 +207,7 @@ export class MenuBackdrop {
     this.disposables.push(floorGeo, floorMat, gridTex);
 
     // Podium ----------------------------------------------------------------------
-    const podiumMat = new THREE.MeshStandardMaterial({ color: 0x15142c, metalness: 0.8, roughness: 0.22, envMapIntensity: 1.4 });
+    const podiumMat = new THREE.MeshStandardMaterial({ color: 0x15142c, metalness: 0.8, roughness: 0.22, envMapIntensity: 0.8 });
     const podiumGeo = new THREE.CylinderGeometry(PODIUM_RADIUS, PODIUM_RADIUS + 0.12, PODIUM_HEIGHT, 72);
     const podium = new THREE.Mesh(podiumGeo, podiumMat);
     podium.position.y = PODIUM_HEIGHT / 2;

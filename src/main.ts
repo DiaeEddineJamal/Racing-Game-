@@ -5,6 +5,8 @@ import { GAME_TITLE } from './core/constants';
 import { Game } from './game/Game';
 import { el } from './ui/dom';
 import { showToast } from './ui/toast';
+import { TRACKS } from './track/tracks';
+import { validateAllTracks } from './track/tracks/validate';
 
 function hasWebGL2(): boolean {
   try {
@@ -29,6 +31,8 @@ function showFatal(root: HTMLElement, title: string, body: string): void {
 }
 
 function boot(): void {
+  if (import.meta.env.DEV) validateAllTracks(TRACKS);
+
   const app = document.getElementById('app') ?? el('div', '', undefined, document.body);
   app.id = 'app';
 
@@ -36,7 +40,7 @@ function boot(): void {
     showFatal(
       app,
       'WEBGL2 REQUIRED',
-      'Turbo Kart Rush needs a browser with WebGL 2 and hardware acceleration enabled. ' +
+      'Lmongolyan Kart needs a browser with WebGL 2 and hardware acceleration enabled. ' +
         'Try the latest Chrome, Edge, Firefox or Safari, and make sure GPU acceleration is switched on.',
     );
     return;
@@ -61,7 +65,7 @@ function boot(): void {
   try {
     const game = new Game(app);
     game.start();
-    (window as unknown as { __turboKartRush?: Game }).__turboKartRush = game;
+    (window as unknown as { __lmongolyanKart?: Game }).__lmongolyanKart = game;
   } catch (err) {
     console.error('[main] failed to start game', err);
     showFatal(

@@ -1,8 +1,24 @@
 /* =============================================================================
-   TURBO KART RUSH — UI stylesheet (workstream A)
+   LMONGOLYAN KART — UI stylesheet
    Dark navy base, electric-blue → magenta → orange accents, glass panels,
    condensed display type via system fonts only (no webfont downloads).
    ============================================================================ */
+
+@font-face {
+  font-family: 'Bungee';
+  src: url('/fonts/bungee.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Rubik';
+  src: url('/fonts/rubik.woff2') format('woff2');
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   --bg: #0b0b1a;
@@ -22,9 +38,9 @@
   --glass-bg: rgba(16, 17, 38, 0.62);
   --glass-border: rgba(255, 255, 255, 0.12);
   --glass-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  --display: 'Impact', 'Haettenschweiler', 'Arial Narrow Bold', 'Franklin Gothic Medium', 'Arial Black', system-ui,
-    sans-serif;
-  --body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --display: 'Bungee', 'Impact', 'Haettenschweiler', 'Arial Narrow Bold', 'Franklin Gothic Medium', 'Arial Black',
+    system-ui, sans-serif;
+  --body: 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --radius: 18px;
   --radius-sm: 10px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -173,6 +189,7 @@ button {
   text-transform: uppercase;
   padding: 13px 26px;
   border-radius: 999px;
+  white-space: nowrap;
   cursor: pointer;
   position: relative;
   transition:
@@ -400,7 +417,14 @@ kbd {
   background-clip: text;
 }
 
+.logo-word-0 {
+  /* "LMONGOLYAN" is ten characters; at the shared size it runs off a laptop screen. */
+  font-size: clamp(38px, 5.6vw, 82px);
+  letter-spacing: 0.02em;
+}
+
 .logo-word-1 {
+  font-size: clamp(56px, 8.2vw, 116px);
   filter: drop-shadow(0 6px 0 #0d2a5a) drop-shadow(0 12px 0 rgba(0, 0, 0, 0.45))
     drop-shadow(0 22px 40px rgba(55, 168, 255, 0.35));
 }
@@ -550,15 +574,50 @@ kbd {
 .card-grid {
   pointer-events: auto;
   display: grid;
-  gap: clamp(8px, 1vw, 14px);
-  align-content: center;
+  gap: clamp(6px, 0.8vw, 12px);
+  align-content: start;
+  /* Rows are sized by the tallest card in them and never squeezed to fit the
+     viewport: the grid scrolls instead, so a card is always whole. */
+  grid-auto-rows: max-content;
   flex: 1;
+  /* Flex items default to min-height:auto, which refuses to shrink below the
+     grid's natural size - without this the grid pushes the footer off-screen
+     instead of scrolling under it. */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  padding: 4px 4px 10px;
+  margin: -4px -4px 0;
+  /* A soft fade at the top/bottom edge hints there is more to scroll to. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+
+.card-grid::-webkit-scrollbar {
+  width: 7px;
+}
+
+.card-grid::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+}
+
+.card-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.45);
 }
 
 /* Character select: everything lives in the left ~60% so the 3D kart is framed on the right. */
 .panel-chars {
   align-items: flex-start;
-  --col: min(60vw, 980px);
+  --col: min(68vw, 1120px);
+}
+
+.panel-chars .card-grid {
+  max-height: none;
 }
 
 .panel-chars .select-header,
@@ -572,7 +631,7 @@ kbd {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-/* Track select: header top-left, cards + footer occupy the lower ~45% under the kart. */
+/* Track select: header top-left, cards occupy the lower half under the kart. */
 .panel-tracks {
   align-items: center;
   justify-content: flex-end;
@@ -585,12 +644,13 @@ kbd {
 }
 
 .panel-tracks .card-grid {
-  flex: 0 0 auto;
-  width: min(93vw, 1240px);
+  flex: 0 1 auto;
+  width: min(96vw, 1440px);
+  max-height: min(62vh, 660px);
 }
 
 .track-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .card {
@@ -708,7 +768,7 @@ kbd {
 
 .card-name {
   font-family: var(--display);
-  font-size: clamp(16px, 1.45vw, 22px);
+  font-size: clamp(15px, 1.35vw, 21px);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-top: 8px;
@@ -723,12 +783,22 @@ kbd {
   min-height: 2.6em;
 }
 
-/* Character card */
+/* Character card — a vertical column: art, name, tagline, then the stat bars
+   pinned to the bottom edge so every card in a row lines its stats up.
+   The swatch takes an explicit height rather than an aspect-ratio, which would
+   contribute nothing to the card's intrinsic height and let the grid clip it. */
+.char-card {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px 14px;
+}
+
 .char-swatch {
   position: relative;
-  height: clamp(48px, 8vh, 78px);
+  height: clamp(78px, 11vh, 122px);
   border-radius: 12px;
   overflow: hidden;
+  flex: 0 0 auto;
   box-shadow: inset 0 -20px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
@@ -769,8 +839,9 @@ kbd {
 
 .stats {
   display: grid;
-  gap: 4px;
-  margin-top: 6px;
+  gap: 5px;
+  margin-top: auto;
+  padding-top: 6px;
 }
 
 .stat {
@@ -813,35 +884,25 @@ kbd {
 }
 
 /* Track card */
+.track-card {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px 14px;
+}
+
 .track-art {
   position: relative;
-  height: clamp(56px, 9.5vh, 92px);
+  height: clamp(132px, 19vh, 205px);
   border-radius: 12px;
   overflow: hidden;
+  flex: 0 0 auto;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
-.track-art-road {
-  position: absolute;
-  left: -10%;
-  right: -10%;
-  bottom: 6%;
-  height: 34%;
-  border-top: 4px solid;
-  border-bottom: 4px solid;
-  transform: perspective(200px) rotateX(38deg) skewX(-8deg);
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.35);
-}
-
-.track-art-road::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 3px;
-  margin-top: -1.5px;
-  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.85) 0 18px, transparent 18px 34px);
+.track-art canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .track-theme-pill {
@@ -850,6 +911,14 @@ kbd {
   left: 10px;
   background: rgba(0, 0, 0, 0.45);
   color: #fff;
+}
+
+.track-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  min-height: 0;
 }
 
 .track-name-row {
@@ -890,6 +959,11 @@ kbd {
   animation: fade-up 0.5s 0.15s var(--ease-out) both;
 }
 
+/* Match the circuit grid so DIFFICULTY / LAPS / START sit on one line. */
+.panel-tracks .select-footer {
+  width: min(96vw, 1440px);
+}
+
 .select-footer .actions {
   margin: 0;
   justify-content: flex-end;
@@ -907,11 +981,28 @@ kbd {
   font-size: 13px;
 }
 
+.race-rules {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+
 .difficulty {
   display: flex;
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
+}
+
+.laps-picker {
+  padding-left: 22px;
+  border-left: 1px solid var(--glass-border);
+}
+
+.laps-picker.focused {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+  border-radius: 10px;
 }
 
 .difficulty-label {
@@ -1581,10 +1672,14 @@ kbd {
   bottom: var(--hud-pad);
   padding: 6px;
   border-radius: 20px;
+  /* --minimap-native is published by ui/Minimap.ts from MINIMAP_SIZE. */
+  --minimap-size: var(--minimap-native, 220px);
 }
 
 .minimap-canvas {
   display: block;
+  width: var(--minimap-size);
+  height: var(--minimap-size);
   border-radius: 14px;
 }
 
@@ -1877,16 +1972,16 @@ kbd {
 
 @media (max-height: 720px) {
   .card {
-    padding: 10px 10px 8px;
+    padding: 8px 8px 10px;
   }
-  .card-tag {
+  .char-card .card-tag {
     display: none;
   }
   .char-swatch {
-    height: 56px;
+    min-height: 72px;
   }
   .track-art {
-    height: 64px;
+    height: clamp(96px, 22vh, 140px);
   }
   .stats {
     gap: 3px;
@@ -1903,11 +1998,11 @@ kbd {
   .controls-legend {
     display: none;
   }
-  .logo-word {
-    font-size: clamp(44px, 6.4vw, 84px);
+  .logo-word-0 {
+    font-size: clamp(30px, 4.8vw, 62px);
   }
-  .logo-word-2 {
-    font-size: clamp(38px, 5vw, 66px);
+  .logo-word-1 {
+    font-size: clamp(42px, 7vw, 88px);
   }
   .hud-place .place-num {
     font-size: 96px;
@@ -1934,5 +2029,1090 @@ kbd {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* =============================================================================
+   Online: title mode buttons, connect panel, lobby
+   ============================================================================= */
+
+.title-modes {
+  display: flex;
+  gap: 14px;
+  margin-top: 18px;
+  pointer-events: auto;
+  animation: fade-up 0.7s 0.2s var(--ease-out) both;
+}
+
+.online-menu {
+  /* Sits on top of the main menu root, which is hidden while this is showing. */
+  z-index: 3;
+}
+
+.panel-online {
+  align-items: center;
+  justify-content: center;
+  gap: 2.4vh;
+}
+
+.online-box {
+  pointer-events: auto;
+  width: min(92vw, 520px);
+  padding: 24px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-radius: var(--radius);
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.field-label {
+  font-family: var(--display);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.field-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+
+.field-input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(55, 168, 255, 0.22);
+}
+
+.code-input {
+  flex: 0 0 8ch;
+  font-family: var(--display);
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.online-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.online-actions .btn {
+  flex: 1 1 auto;
+}
+
+.online-status {
+  min-height: 1.2em;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+/* Lobby -------------------------------------------------------------------- */
+
+.lobby-code {
+  letter-spacing: 0.35em;
+  color: var(--gold);
+  text-shadow: 0 0 24px rgba(255, 210, 63, 0.45);
+}
+
+.lobby-cols {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 0.9fr);
+  gap: 14px;
+  width: min(94vw, 1180px);
+  margin: 0 auto;
+  align-items: start;
+}
+
+.lobby-col {
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.lobby-col-title {
+  font-family: var(--display);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: var(--ink-faint);
+}
+
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.player-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) minmax(0, auto) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.player-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.player-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-char {
+  font-size: 12px;
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-flag {
+  font-family: var(--display);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--ink-dim);
+}
+
+.player-flag.host {
+  background: rgba(255, 210, 63, 0.18);
+  color: var(--gold);
+}
+
+.player-flag.ready {
+  background: rgba(92, 255, 138, 0.16);
+  color: var(--green);
+}
+
+.chip-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition:
+    background 0.15s var(--ease-out),
+    color 0.15s var(--ease-out),
+    border-color 0.15s var(--ease-out);
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--chip-accent, var(--blue));
+  color: var(--ink);
+}
+
+.chip.on {
+  background: var(--chip-accent, var(--blue));
+  border-color: var(--chip-accent, var(--blue));
+  color: #0b0b1a;
+  font-weight: 700;
+}
+
+.chip.taken,
+.chip:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.host-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.step-rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.step-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-value {
+  font-family: var(--display);
+  font-size: 17px;
+  min-width: 2ch;
+  text-align: center;
+}
+
+.btn.tiny {
+  padding: 2px 10px;
+  font-size: 15px;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.board-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.board-empty {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.board-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.board-rank {
+  color: var(--ink-faint);
+}
+
+.board-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+}
+
+@media (max-width: 980px) {
+  .lobby-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .title-modes {
+    flex-direction: column;
+    width: min(80vw, 320px);
+  }
+}
+
+/* =============================================================================
+   Connection quality chip (online races only)
+   ============================================================================= */
+
+.hud-net {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 12px;
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-net-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px currentColor;
+}
+
+.hud-net.fair .hud-net-dot {
+  background: var(--gold);
+}
+
+.hud-net.poor .hud-net-dot {
+  background: var(--red);
+}
+
+.hud-net.poor {
+  color: var(--red);
+}
+
+/* =============================================================================
+   Touch driving controls
+
+   Built on touch hardware (see ui/TouchControls.ts) and visible from the
+   countdown to the flag. The layout follows where thumbs actually sit when a
+   phone is held: the left one owns the steer pad in the bottom-left corner,
+   the right one owns GAS / DRIFT / BRAKE / ITEM in the bottom-right, and the
+   whole bottom band is declared off-limits to the HUD (see --touch-band).
+
+   Everything is sized from a handful of variables on body.touch-device, so the
+   HUD rules further down can park themselves clear of the controls in either
+   orientation without repeating any magic numbers.
+   ============================================================================= */
+
+body.touch-device {
+  /* Stops double-tap zoom and pull-to-refresh from fighting the controls. */
+  touch-action: manipulation;
+  overscroll-behavior: none;
+
+  --touch-inset: max(env(safe-area-inset-bottom, 0px), 12px);
+  --touch-side: max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px), 12px);
+  --touch-top: max(env(safe-area-inset-top, 0px), 10px);
+  /* Base button diameter; GAS and DRIFT scale up from it. */
+  --btn: clamp(56px, 13vmin, 84px);
+  --steer-w: min(44vw, 300px);
+  --steer-h: clamp(92px, 23vmin, 128px);
+  /* Vertical strip the driving controls occupy. Nothing else may live here. */
+  --touch-band: max(var(--steer-h), calc(var(--btn) * 2.55));
+}
+
+/*
+ * touch-action is intersected down the ancestor chain, so this must stay
+ * scoped to the canvas: the same rule on #app (which also contains the
+ * scrollable menu grids) would silence swipe-to-scroll everywhere under it.
+ */
+body.touch-device .game-canvas {
+  touch-action: none;
+}
+
+body.touch-device .btn {
+  min-height: 48px;
+}
+
+/* Keyboard hints are noise on a device with no keyboard: the legend and the
+   "press ENTER" prompt both name keys that are not there, and the two big
+   title buttons already say what to do. */
+body.touch-device .controls-legend,
+body.touch-device .press-start {
+  display: none;
+}
+
+body.touch-device .version {
+  left: 0;
+  right: 0;
+  bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 10px;
+}
+
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  font-family: var(--display);
+  letter-spacing: 0.06em;
+}
+
+.touch-controls > * {
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-icon {
+  width: 1.4em;
+  height: 1.4em;
+  display: block;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
+}
+
+/* --- steer pad (left thumb) ------------------------------------------------
+   One analog bar rather than two buttons: sliding a thumb across it steers
+   proportionally, so a gentle line through a corner is possible, while the
+   arrow at each end still reads as "press here to turn". A dead band around
+   the middle is the hands-off rest position. */
+
+.touch-steer {
+  position: absolute;
+  left: var(--touch-side);
+  bottom: var(--touch-inset);
+  width: var(--steer-w);
+  height: var(--steer-h);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  padding: 10px 12px 6px;
+  border-radius: 26px;
+  background: rgba(10, 12, 28, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.touch-steer-fill {
+  position: absolute;
+  top: 24%;
+  bottom: 34%;
+  left: 50%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(55, 168, 255, 0.6), rgba(255, 58, 184, 0.6));
+  pointer-events: none;
+  z-index: 0;
+}
+
+.touch-steer-knob {
+  position: absolute;
+  top: 44%;
+  left: 50%;
+  width: clamp(26px, 6.5vmin, 36px);
+  height: clamp(26px, 6.5vmin, 36px);
+  border-radius: 50%;
+  background: #f4f6ff;
+  border: 2px solid rgba(55, 168, 255, 0.9);
+  box-shadow: 0 0 16px rgba(55, 168, 255, 0.55);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.touch-arrow {
+  position: relative;
+  z-index: 1;
+  width: clamp(44px, 10vmin, 62px);
+  height: clamp(44px, 10vmin, 62px);
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  justify-self: center;
+  transition: background 0.09s linear, color 0.09s linear;
+}
+
+/* Pinned to the two ends of the bar: the fill and knob are out of flow, so
+   without this the right arrow auto-places into the middle column. */
+.touch-arrow.left {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.touch-arrow.right {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.touch-arrow .touch-icon {
+  width: 60%;
+  height: 60%;
+}
+
+.touch-arrow.active {
+  background: linear-gradient(160deg, rgba(55, 168, 255, 0.95), rgba(255, 58, 184, 0.8));
+  color: #fff;
+  box-shadow: 0 0 20px rgba(55, 168, 255, 0.45);
+}
+
+.touch-steer-caption {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: 10.5px;
+  letter-spacing: 0.3em;
+  color: rgba(255, 255, 255, 0.55);
+  z-index: 1;
+}
+
+.touch-steer.steering {
+  border-color: rgba(55, 168, 255, 0.55);
+}
+
+/* --- drive cluster (right thumb) -------------------------------------------
+   GAS sits in the corner where the thumb rests, DRIFT directly above it (the
+   two are used together out of every corner), BRAKE and ITEM on the inside. */
+
+.touch-drive {
+  position: absolute;
+  right: var(--touch-side);
+  bottom: var(--touch-inset);
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas:
+    'item  drift'
+    'brake gas';
+  gap: clamp(8px, 1.8vmin, 14px);
+  align-items: end;
+  justify-items: end;
+}
+
+.touch-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 50%;
+  width: var(--btn);
+  height: var(--btn);
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition:
+    transform 0.09s var(--ease-out),
+    filter 0.09s linear,
+    opacity 0.2s linear;
+}
+
+.touch-btn-label {
+  font-size: calc(var(--btn) * 0.155);
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.touch-btn.active {
+  transform: scale(0.92);
+  filter: brightness(1.35);
+}
+
+.touch-btn.gas {
+  grid-area: gas;
+  width: calc(var(--btn) * 1.3);
+  height: calc(var(--btn) * 1.3);
+  background: radial-gradient(circle at 34% 28%, #7dff9c, #147a3c 72%);
+  border-color: rgba(125, 255, 156, 0.75);
+}
+
+/* Auto-accelerate on: the pedal still works, it is just no longer the point. */
+.touch-btn.gas.dim {
+  opacity: 0.62;
+}
+
+.touch-btn.gas.dim.active {
+  opacity: 1;
+}
+
+.touch-btn.brake {
+  grid-area: brake;
+  background: radial-gradient(circle at 34% 28%, #ff9a4a, #9a2814 72%);
+  border-color: rgba(255, 154, 74, 0.7);
+}
+
+.touch-btn.drift {
+  grid-area: drift;
+  width: calc(var(--btn) * 1.14);
+  height: calc(var(--btn) * 1.14);
+  background: radial-gradient(circle at 34% 28%, #6ec4ff, #1840a0 72%);
+  border-color: rgba(110, 196, 255, 0.75);
+}
+
+.touch-btn.item {
+  grid-area: item;
+  background: radial-gradient(circle at 34% 28%, #ffe14a, #b06a0c 72%);
+  border-color: rgba(255, 225, 74, 0.75);
+}
+
+/* With auto-gas on, drift is the button the thumb reaches for most. */
+.touch-controls.auto-gas .touch-btn.drift {
+  width: calc(var(--btn) * 1.24);
+  height: calc(var(--btn) * 1.24);
+}
+
+/* --- look-back: a driving control, so it lives on the steering side -------- */
+
+.touch-aux {
+  position: absolute;
+  left: calc(var(--touch-side) + var(--steer-w) - clamp(52px, 12vmin, 66px));
+  bottom: calc(var(--touch-inset) + var(--steer-h) + 8px);
+}
+
+/* --- rarely-pressed utilities, out of the driving line --------------------- */
+
+.touch-corner {
+  position: absolute;
+  top: var(--touch-top);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 2;
+}
+
+.touch-mini,
+.touch-auto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 48px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(10, 12, 28, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.touch-mini .touch-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.touch-mini.look {
+  min-height: clamp(44px, 10vmin, 58px);
+  border-radius: 16px;
+  background: rgba(10, 12, 28, 0.5);
+}
+
+.touch-mini.active,
+.touch-auto.active {
+  filter: brightness(1.5);
+}
+
+.touch-auto {
+  font-size: 10.5px;
+}
+
+.touch-auto.on {
+  color: var(--green);
+  border-color: rgba(92, 255, 138, 0.55);
+}
+
+/* =============================================================================
+   HUD on a touch device
+
+   The bottom band belongs to the thumbs, the top corners to the readouts.
+   Item top-left, lap + timer top-right with the minimap tucked underneath,
+   place just above the steer pad, speed in the gap between the two pads.
+   ============================================================================= */
+
+body.touch-device .hud {
+  --hud-pad: max(10px, env(safe-area-inset-top, 0px));
+}
+
+body.touch-device .item-frame {
+  /* Tapping the item box fires it - the same action as the ITEM button. */
+  pointer-events: auto;
+  cursor: pointer;
+  width: clamp(58px, 11vmin, 84px);
+}
+
+body.touch-device .hud-item {
+  top: var(--hud-pad);
+  left: max(var(--hud-pad), env(safe-area-inset-left, 0px));
+  gap: 4px;
+}
+
+body.touch-device .hud-lap-value {
+  font-size: 20px;
+}
+
+body.touch-device .hud-lap-label {
+  font-size: 11px;
+}
+
+body.touch-device .hud-timer {
+  font-size: 15px;
+  padding: 5px 10px;
+  min-width: 7ch;
+}
+
+body.touch-device .hud-lap {
+  padding: 5px 10px;
+  gap: 6px;
+}
+
+body.touch-device .hud-net {
+  font-size: 11px;
+  padding: 4px 9px;
+}
+
+/* Minimap moves up under the lap counter: bottom-right is the GAS button. */
+body.touch-device .hud-minimap {
+  right: max(var(--hud-pad), env(safe-area-inset-right, 0px));
+  bottom: auto;
+  top: calc(var(--hud-pad) + clamp(72px, 15vmin, 96px));
+  padding: 4px;
+  --minimap-size: clamp(76px, 17vmin, 116px);
+}
+
+/* Readouts are glass panels, and .glass takes pointer events - which would
+   let the minimap swallow a tap meant for a control underneath it. Only the
+   item box is meant to be pressed. */
+body.touch-device .hud-minimap,
+body.touch-device .hud-lap,
+body.touch-device .hud-timer,
+body.touch-device .hud-net,
+body.touch-device .hud-place,
+body.touch-device .hud-speed {
+  pointer-events: none;
+}
+
+/* Place: directly above the steer pad, where the eye already is mid-corner. */
+body.touch-device .hud-place {
+  left: var(--touch-side);
+  right: auto;
+  top: auto;
+  bottom: calc(var(--touch-inset) + var(--steer-h) + 10px);
+  transform: none;
+}
+
+body.touch-device .hud-place .place-num {
+  font-size: clamp(34px, 9vmin, 60px);
+}
+
+body.touch-device .hud-place .place-suffix {
+  font-size: 14px;
+}
+
+/* Speed: the gap between the two pads in landscape. */
+body.touch-device .hud-speed {
+  left: 50%;
+  right: auto;
+  top: auto;
+  bottom: var(--touch-inset);
+  transform: translateX(-50%);
+  width: clamp(64px, 13vmin, 96px);
+  opacity: 0.92;
+}
+
+/* Portrait: the pads span the full width, so the speedo sits above the band. */
+@media (orientation: portrait) {
+  body.touch-device .hud-speed {
+    bottom: calc(var(--touch-band) + var(--touch-inset) + 14px);
+  }
+
+  body.touch-device .hud-place {
+    bottom: calc(var(--touch-band) + var(--touch-inset) + 14px);
+  }
+
+  body.touch-device {
+    --btn: clamp(64px, 16vw, 96px);
+    --steer-w: min(46vw, 260px);
+    --steer-h: clamp(104px, 26vw, 150px);
+  }
+
+  /* Centre chips would sit on top of the minimap on a narrow screen. */
+  body.touch-device .touch-corner {
+    left: auto;
+    right: 50%;
+    transform: translateX(50%);
+    top: calc(var(--touch-top) + clamp(96px, 22vw, 130px));
+  }
+}
+
+/* Short landscape (a phone on its side): every pixel of height counts. */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch-device {
+    --btn: clamp(52px, 15vh, 76px);
+    --steer-w: min(38vw, 260px);
+    --steer-h: clamp(84px, 24vh, 108px);
+  }
+
+  body.touch-device .hud-minimap {
+    top: calc(var(--hud-pad) + clamp(64px, 17vh, 88px));
+    --minimap-size: clamp(70px, 21vh, 98px);
+  }
+}
+
+/* =============================================================================
+   Menus on small screens
+
+   The card grids scroll (see .card-grid) so the footer with START RACE is
+   always reachable; these queries only decide how many cards fit across and
+   how tall each one may be.
+   ============================================================================= */
+
+/* Tablets and small laptops. */
+@media (max-width: 1100px) and (min-width: 781px) {
+  .char-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .track-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panel-chars {
+    --col: min(94vw, 980px);
+  }
+
+  .panel-tracks .card-grid {
+    width: min(94vw, 900px);
+  }
+}
+
+/* Phone widths: two racers across, one circuit across, everything scrollable. */
+@media (max-width: 780px) {
+  .panel-select {
+    padding: 2vh 4vw 2vh;
+  }
+
+  .panel-chars,
+  .panel-tracks {
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .panel-chars {
+    --col: 100%;
+  }
+
+  .panel-tracks .select-header {
+    position: static;
+  }
+
+  .panel-tracks .card-grid {
+    width: 100%;
+    max-height: none;
+    flex: 1;
+  }
+
+  .select-header .panel-title {
+    font-size: clamp(22px, 6vw, 34px);
+  }
+
+  .char-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .track-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .char-swatch {
+    height: clamp(84px, 22vw, 130px);
+  }
+
+  .track-art {
+    height: clamp(140px, 38vw, 200px);
+  }
+
+  .card-tag {
+    min-height: 0;
+  }
+
+  .select-footer {
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    padding: 10px 12px;
+    width: 100%;
+  }
+
+  .select-footer .actions {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .race-rules {
+    justify-content: center;
+    gap: 14px;
+  }
+
+  .laps-picker {
+    padding-left: 14px;
+  }
+
+  .difficulty-label {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+  }
+
+  .seg {
+    padding: 9px 14px;
+    font-size: 12px;
+  }
+
+  .btn {
+    font-size: 14px;
+    padding: 11px 20px;
+  }
+
+  .panel {
+    padding: 18px 16px;
+    min-width: 0;
+    max-width: 94vw;
+  }
+
+  .logo-word-0 {
+    font-size: clamp(26px, 8vw, 48px);
+  }
+
+  .logo-word-1 {
+    font-size: clamp(34px, 12vw, 70px);
+  }
+
+  .lobby-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .title-modes {
+    flex-direction: column;
+    width: min(84vw, 340px);
+  }
+
+  .standing-row {
+    font-size: 14px;
+  }
+}
+
+/* Phone on its side: wide but only ~390px tall. Cards get shorter, not fewer,
+   and the grid scrolls behind a compact header and footer. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .panel-select {
+    padding: 1.5vh 3vw 1.5vh;
+    gap: 6px;
+  }
+
+  .select-header .panel-title {
+    font-size: clamp(18px, 4.4vh, 26px);
+  }
+
+  .select-header .panel-kicker {
+    font-size: 10px;
+  }
+
+  .panel-chars {
+    --col: 100%;
+  }
+
+  .panel-tracks {
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .panel-tracks .select-header {
+    position: static;
+  }
+
+  .panel-tracks .card-grid {
+    width: 100%;
+    max-height: none;
+    flex: 1;
+  }
+
+  .char-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .track-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .card {
+    padding: 8px 8px 10px;
+  }
+
+  .char-card {
+    padding: 8px 8px 10px;
+  }
+
+  .char-swatch {
+    height: clamp(52px, 17vh, 78px);
+  }
+
+  .char-card .card-tag {
+    display: none;
+  }
+
+  .track-art {
+    height: clamp(70px, 24vh, 104px);
+  }
+
+  .track-card .card-tag {
+    display: none;
+  }
+
+  .stats {
+    gap: 3px;
+    padding-top: 4px;
+  }
+
+  .stat-bar {
+    height: 4px;
+  }
+
+  .select-footer {
+    padding: 6px 12px;
+    gap: 10px;
+  }
+
+  .panel-tracks .select-footer {
+    width: 100%;
+  }
+
+  .difficulty-label {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+  }
+
+  .seg {
+    padding: 7px 12px;
+    font-size: 11px;
+  }
+
+  .btn {
+    font-size: 13px;
+    padding: 9px 16px;
+  }
+
+  .select-info-name {
+    font-size: 18px;
+  }
+
+  .select-info-tagline,
+  .difficulty-blurb {
+    display: none;
   }
 }
