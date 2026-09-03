@@ -12,7 +12,8 @@
     "server": "node server/index.js",
     "check:browser": "node tools/browser-check.mjs",
     "check:mobile": "node tools/mobile-check.mjs",
-    "serve": "npm run build && node server/index.js"
+    "serve": "npm run build && node server/index.js",
+    "start": "npm run serve"
   },
   "dependencies": {
     "compression": "^1.8.1",
