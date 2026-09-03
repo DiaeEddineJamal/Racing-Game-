@@ -26,6 +26,11 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+        env:
+          # Optional: repository variable pointing at a multiplayer server that
+          # can hold WebSockets open. Pages serves files only, so without this
+          # the deployed build is single player.
+          VITE_GAME_SERVER: ${{ vars.VITE_GAME_SERVER }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

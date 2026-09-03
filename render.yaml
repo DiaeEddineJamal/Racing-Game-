@@ -1,0 +1,18 @@
+# Render blueprint: one web service that serves the built client and the
+# multiplayer sockets from the same origin, which is all online play needs.
+#
+#   Render -> New -> Blueprint -> point it at this repo.
+#
+# Any host that runs a Node process and keeps WebSockets open works the same
+# way: build with `npm ci && npm run build`, start with `node server/index.js`.
+services:
+  - type: web
+    name: lmongolyan-kart
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: node server/index.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

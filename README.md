@@ -78,10 +78,17 @@ Open the URL Vite prints, which is http://localhost:5178/ by default.
 
 | Script | What it does |
 | --- | --- |
-| `npm run dev` | Dev server with hot reload |
+| `npm run dev` | Dev server with hot reload. Starts the multiplayer server too, so online play works out of the box |
 | `npm run build` | Production build into `dist/` |
-| `npm run preview` | Serve the production build |
+| `npm run serve` | Build, then serve the game and the multiplayer sockets from one process on `:3000` |
+| `npm run server` | Multiplayer server only, against whatever is already in `dist/` |
+| `npm run preview` | Serve the production build (static only - no multiplayer) |
 | `npm run typecheck` | TypeScript check with no emit |
+| `npm run check:browser` | Puppeteer pass over the built game: every circuit, a full race, a two-player online race |
+| `npm run check:mobile` | Same, on an emulated phone in portrait and landscape |
+
+Online play needs the multiplayer server (`server/index.js`). `npm run dev` and
+`npm run serve` both start it; `npm run preview` does not.
 
 ## Project layout
 
@@ -114,7 +121,45 @@ turbo-kart-rush/
 
 ## Deploying
 
-Every push to `main` runs `.github/workflows/deploy.yml`, which type-checks, builds and publishes `dist/` to GitHub Pages. Vite is configured with a relative `base`, so the build works from any sub-path.
+The game is two pieces: a static client (`dist/`) and the multiplayer server
+(`server/index.js`), which keeps a Socket.IO WebSocket open per player.
+
+**A static host cannot run the server.** Vercel, Netlify and GitHub Pages serve
+files. Nothing on those origins answers `wss://<your-site>/socket.io`, so single
+player works and PLAY ONLINE fails with a refused WebSocket. Two ways round it:
+
+### One host for everything (simplest)
+
+Deploy the repo somewhere that runs a Node process and holds WebSockets open -
+Render, Railway, Fly.io, a VPS:
+
+- Build command: `npm ci && npm run build`
+- Start command: `node server/index.js`
+
+The server serves `dist/` and the sockets from the same origin, so there is
+nothing else to configure. `render.yaml` in the repo is a ready-made blueprint
+for Render.
+
+### Client on Vercel, server elsewhere
+
+1. Deploy the server to a host that supports WebSockets (build `npm ci`, start
+   `node server/index.js`). Note its URL, say `https://kart-server.onrender.com`.
+2. In the Vercel project settings add an environment variable
+   `VITE_GAME_SERVER` with that URL, then **redeploy** - the value is baked into
+   the bundle at build time, so an existing deployment will not pick it up.
+3. Nothing to change on the server: it reflects the requesting origin in its
+   CORS headers.
+
+Free instances on Render and similar hosts sleep when idle, so the first
+connection after a quiet spell can take a few seconds.
+
+### GitHub Pages
+
+Every push to `main` runs `.github/workflows/deploy.yml`, which type-checks,
+builds and publishes `dist/` to GitHub Pages. Vite is configured with a relative
+`base`, so the build works from any sub-path. For online play there, set a
+repository variable named `VITE_GAME_SERVER`; the workflow passes it to the
+build.
 
 ## Screenshots
 

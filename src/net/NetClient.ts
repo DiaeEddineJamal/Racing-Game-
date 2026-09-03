@@ -20,6 +20,23 @@ import type {
 
 export type NetStatus = 'offline' | 'connecting' | 'online' | 'error';
 
+/**
+ * Where the multiplayer server lives.
+ *
+ * Empty means same origin, which is what `npm run dev` (Vite proxies
+ * /socket.io through) and `npm run serve` (the server serves the client) both
+ * give you. A static host - Vercel, Netlify, GitHub Pages - cannot hold a
+ * WebSocket open, so a build for one of those has to be told where the server
+ * is: `VITE_GAME_SERVER=https://your-server.example npm run build`.
+ */
+const SERVER_URL = (import.meta.env.VITE_GAME_SERVER ?? '').trim().replace(/\/$/, '');
+
+/** True when the page itself is served from a machine that could be running the server. */
+function pageIsLocal(): boolean {
+  const host = location.hostname;
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.startsWith('192.168.') || host.endsWith('.local');
+}
+
 export class NetClient {
   private socket: Socket | null = null;
   private _room: RoomState | null = null;
@@ -73,8 +90,8 @@ export class NetClient {
       return;
     }
     this.setStatus('connecting');
-    // Same origin: the game server serves the client, so no URL is needed.
-    const socket = io({ transports: ['websocket', 'polling'], reconnectionAttempts: 6, timeout: 8000 });
+    const options = { transports: ['websocket', 'polling'], reconnectionAttempts: 6, timeout: 8000 };
+    const socket = SERVER_URL ? io(SERVER_URL, options) : io(options);
     this.socket = socket;
 
     socket.on('connect', () => {
@@ -85,13 +102,8 @@ export class NetClient {
       // socket.io's own message here is transport jargon ("xhr poll error"),
       // which tells a player nothing. Keep it in the console and say what is
       // actually wrong - in dev, that is almost always a server that is not up.
-      console.warn('[net] connect failed:', err.message);
-      this.setStatus(
-        'error',
-        import.meta.env.DEV
-          ? 'Could not reach the game server. Start it with `npm run server`, or restart `npm run dev`.'
-          : 'Could not reach the game server. Check your connection and try again.',
-      );
+      console.warn('[net] connect failed:', err.message, SERVER_URL ? `(server: ${SERVER_URL})` : '(same origin)');
+      this.setStatus('error', this.connectHint());
     });
     socket.on('disconnect', (reason: string) => {
       this._pingMs = 0;
@@ -206,6 +218,22 @@ export class NetClient {
   }
 
   // --- internals -----------------------------------------------------------
+
+  /**
+   * What to tell the player when the socket will not open. The interesting
+   * case is a static deployment with no server URL baked in: the site is up,
+   * so "check your connection" is misleading - there is simply nothing
+   * listening on this origin.
+   */
+  private connectHint(): string {
+    if (import.meta.env.DEV) {
+      return 'Could not reach the game server. Start it with `npm run server`, or restart `npm run dev`.';
+    }
+    if (!SERVER_URL && !pageIsLocal()) {
+      return 'Online play is not set up on this deployment: this host serves the game files only. The multiplayer server has to run somewhere that keeps a WebSocket open, and the site must be built with VITE_GAME_SERVER pointing at it.';
+    }
+    return `Could not reach the game server${SERVER_URL ? ` at ${SERVER_URL}` : ''}. It may be asleep or restarting - try again in a moment.`;
+  }
 
   private setStatus(status: NetStatus, detail?: string): void {
     if (status === this._status && !detail) return;
