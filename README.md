@@ -131,23 +131,35 @@ player works and PLAY ONLINE fails with a refused WebSocket. Two ways round it:
 ### One host for everything (simplest, and free)
 
 Deploy the repo somewhere that runs a Node process and holds WebSockets open.
-Render's free tier does, and `render.yaml` in this repo is a ready-made
-blueprint for it:
+Every option below serves `dist/` and the sockets from the same origin, so
+there is nothing to configure - no environment variables, no second
+deployment - and the deployed URL is the one to share with the people you
+want to race.
+
+**No credit card at all:** [Bonto](https://bonto.dev) hosts a full Node.js
+server (not a serverless function) with WebSocket support, free, without asking
+for payment details.
+
+1. Sign up at bonto.dev and connect this GitHub repo.
+2. Build command: `npm run build`. Start command: `node server/index.js`.
+3. Deploy. Bonto gives the app a `.bonto.run` URL.
+
+A free app sleeps after 30 minutes idle and wakes on the next request, same
+as the option below - the lobby's "waking the game server" message and the
+client's patient retry cover this either way. Bonto's dashboard has changed
+before and may again; if a step above doesn't match what you see, the shape
+of it - point it at this repo, `npm run build` to build, `node server/index.js`
+to start - is what to look for.
+
+**If you don't mind a card on file:** Render's free web-service tier is $0
+unless you exceed the free limits or upgrade, and `render.yaml` in this repo
+is a ready-made blueprint for it:
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/DiaeEddineJamal/Racing-Game-)
 
-Or by hand, on Render or Railway or Fly.io or a VPS:
-
-- Build command: `npm ci && npm run build`
-- Start command: `node server/index.js`
-
-The server serves `dist/` and the sockets from the same origin, so there is
-nothing else to configure - no environment variables, no second deployment.
-That URL is then the one to share with the people you want to race.
-
-A free instance sleeps after about fifteen minutes with nobody on it, and the
-first connection afterwards waits for it to boot. The lobby says so while it
-waits, and the client keeps retrying for around a minute rather than giving up.
+Railway and Fly.io work the same way (`npm ci && npm run build` to build,
+`node server/index.js` to start) but both ask for a card too. A VPS you
+already pay for sidesteps the question entirely.
 
 ### Client on Vercel, server elsewhere
 
