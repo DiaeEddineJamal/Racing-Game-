@@ -35,9 +35,9 @@ const ROULETTE_TICKS = 10;
 const LIGHTNING_COOLDOWN = 20;
 const GOLDEN_MIN_SPACING = 0.25;
 
-const GREEN_SPEED = 34;
-const RED_SPEED = 30;
-const BLUE_SPEED = 45;
+const GREEN_SPEED = 44;
+const RED_SPEED = 39;
+const BLUE_SPEED = 58;
 const SHELL_HEIGHT = 0.35;
 const GREEN_LIFE = 9;
 const RED_LIFE = 8;

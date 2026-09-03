@@ -16,28 +16,33 @@ export const atlasFrostbite: TrackDefinition = {
   difficulty: 2,
   controlPoints: [
     { x: 0, y: 8, z: 0 }, // 0 finish line (plateau)
-    { x: 0, y: 8, z: -134.1 },
-    { x: -6.7, y: 7.5, z: -150.4 }, // chicane 1
-    { x: -6.7, y: 6.5, z: -182.9 },
-    { x: 0, y: 5.5, z: -199.2 },
-    { x: 0, y: 4.5, z: -237.5 },
-    { x: 57.5, y: 2, z: -295 }, // big downhill sweeper
-    { x: 134.1, y: 0, z: -295 },
-    { x: 208.7, y: -1, z: -264.1 }, // frozen lake sweep (void)
-    { x: 239.5, y: -1, z: -189.6 },
-    { x: 239.5, y: -1, z: -122.5 }, // end of lake
-    { x: 239.5, y: 1.5, z: -21.9 }, // long climb
-    { x: 239.5, y: 4, z: 78.7 },
-    { x: 191.6, y: 5.5, z: 126.6 },
-    { x: 143.7, y: 6.5, z: 126.6 },
-    { x: 127.5, y: 7.5, z: 119.8 }, // chicane 2
-    { x: 94.9, y: 8.5, z: 119.8 },
-    { x: 78.7, y: 9, z: 126.6 },
-    { x: 47.9, y: 8.5, z: 126.6 },
-    { x: 0, y: 8, z: 78.7 }, // final corner onto the straight
+    { x: 8, y: 8, z: -64 },
+    { x: -2, y: 8, z: -122 }, // opening kink
+    { x: -8, y: 7.5, z: -150 }, // chicane 1
+    { x: -8, y: 6.5, z: -184 },
+    { x: 2, y: 5.5, z: -206 },
+    { x: 0, y: 4.5, z: -240 },
+    { x: 52, y: 2, z: -296 }, // big downhill sweeper
+    { x: 130, y: 0, z: -298 },
+    { x: 206, y: -1, z: -266 }, // frozen lake sweep (void)
+    { x: 240, y: -1, z: -192 },
+    { x: 238, y: -1, z: -142 },
+    { x: 206, y: -1, z: -114 }, // hairpin at the end of the lake
+    { x: 216, y: 0, z: -78 },
+    { x: 248, y: 0.5, z: -56 },
+    { x: 252, y: 1.5, z: -6 }, // long climb
+    { x: 232, y: 3, z: 42 }, // climb esse
+    { x: 246, y: 4.5, z: 88 },
+    { x: 206, y: 5.5, z: 126 },
+    { x: 160, y: 6.5, z: 132 },
+    { x: 128, y: 7.5, z: 118 }, // chicane 2
+    { x: 96, y: 8.5, z: 122 },
+    { x: 74, y: 9, z: 132 },
+    { x: 44, y: 8.5, z: 126 },
+    { x: 0, y: 8, z: 80 }, // final corner onto the straight
   ],
   halfWidth: 8,
-  halfWidths: [8.5, 8.5, 8.5, 8.5, 8.5, 8, 8, 7.5, 7.5, 7.5, 7.5, 8, 8, 8, 8, 8.5, 8.5, 8.5, 8, 8.5],
+  halfWidths: [8.5, 8.5, 8, 8, 8, 8, 8.5, 9, 9, 8.5, 8.5, 8, 8, 8, 8.5, 8.5, 8, 8, 8.5, 8.5, 8, 8, 8, 8.5, 8.5],
   wallHalfWidthFactor: 1.5,
   itemBoxRows: [0.08, 0.36, 0.62, 0.9],
   boostPads: [0.22, 0.66, 0.935],

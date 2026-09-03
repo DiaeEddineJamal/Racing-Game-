@@ -3,9 +3,9 @@ import { VOLCANIC_ASH } from '../weather';
 
 /**
  * Jbel Inferno - volcano circuit.
- * A long climb out of the ash field onto the caldera rim, a flat-out plateau
- * across the crater lip, then a plunging descent and a fast lower loop past the
- * lava runs. ~1150 m.
+ * A climb out of the ash field with a kink and a sweeper, a chicane across the
+ * crater lip, then a plunging descent through two esses, a tight hairpin at the
+ * lava runs and a triple switchback back to the line. ~1200 m.
  */
 export const jbelInferno: TrackDefinition = {
   id: 'jbel',
@@ -16,29 +16,34 @@ export const jbelInferno: TrackDefinition = {
   difficulty: 3,
   controlPoints: [
     { x: 0, y: 0, z: 0 }, // 0 finish line, ash field
-    { x: 0, y: 2, z: -69.6 },
-    { x: 2.4, y: 5, z: -139.2 }, // the climb
-    { x: 21.6, y: 8, z: -199.2 },
-    { x: 64.8, y: 9, z: -240 },
-    { x: 122.4, y: 9, z: -249.6 }, // crater lip, flat out
-    { x: 177.6, y: 7, z: -230.4 },
-    { x: 208.8, y: 4, z: -182.4 },
-    { x: 213.6, y: 1, z: -124.8 }, // the plunge
-    { x: 201.6, y: 0, z: -72 },
-    { x: 172.8, y: 0, z: -28.8 },
-    { x: 180, y: 0, z: 24 }, // lower loop past the lava runs
-    { x: 206.4, y: 0, z: 67.2 },
-    { x: 199.2, y: 0, z: 120 },
-    { x: 166, y: 0, z: 156 }, // switchback out of the ash bowl
-    { x: 122, y: 0, z: 168 },
-    { x: 86, y: 0, z: 150 },
-    { x: 48, y: 0, z: 152 },
-    { x: 18, y: 0, z: 130 },
-    { x: 4.8, y: 0, z: 88.8 },
-    { x: 0, y: 0, z: 40.8 },
+    { x: 0, y: 1.5, z: -62 },
+    { x: 6, y: 3.5, z: -118 }, // kink right, into the climb
+    { x: 30, y: 5.5, z: -160 },
+    { x: 62, y: 7.5, z: -186 }, // sweeper onto the rim
+    { x: 104, y: 9, z: -196 },
+    { x: 150, y: 9, z: -190 }, // crater lip chicane, right then left
+    { x: 166, y: 9, z: -154 },
+    { x: 200, y: 8.5, z: -146 },
+    { x: 214, y: 7, z: -122 }, // over the edge, the plunge starts
+    { x: 210, y: 4.5, z: -84 }, // esse right
+    { x: 186, y: 2.5, z: -60 }, // esse left
+    { x: 190, y: 1, z: -24 },
+    { x: 214, y: 0, z: 12 }, // out to the lava runs
+    { x: 232, y: 0, z: 30 }, // hairpin in
+    { x: 238, y: 0, z: 56 }, // hairpin apex
+    { x: 214, y: 0, z: 74 }, // hairpin out
+    { x: 200, y: 0, z: 86 },
+    { x: 172, y: 0, z: 112 }, // double-apex left
+    { x: 140, y: 0, z: 118 },
+    { x: 116, y: 0, z: 142 },
+    { x: 82, y: 0, z: 158 }, // switchback back onto the ash field
+    { x: 48, y: 0, z: 150 },
+    { x: 18, y: 0, z: 140 },
+    { x: 2, y: 0, z: 108 },
+    { x: 0, y: 0, z: 62 },
   ],
   halfWidth: 8.5,
-  halfWidths: [9, 8.5, 8.5, 8, 8, 8.5, 8.5, 8, 8, 8, 8, 8, 8.5, 8.5, 8.5, 8.5, 8, 8, 8.5, 8.5, 9],
+  halfWidths: [9, 9, 8.5, 8.5, 8.5, 8.5, 8, 8, 8.5, 8.5, 8, 8, 8.5, 8.5, 8.5, 9, 9, 8.5, 8, 8, 8.5, 8.5, 8, 8, 8.5, 9],
   wallHalfWidthFactor: 1.45,
   itemBoxRows: [0.12, 0.36, 0.6, 0.85],
   boostPads: [0.26, 0.52, 0.78],

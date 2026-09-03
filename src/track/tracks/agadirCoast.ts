@@ -2,10 +2,10 @@ import type { TrackDefinition } from '../../core/types';
 import { SEA_SPRAY } from '../weather';
 
 /**
- * Agadir Coast - seafront circuit.
- * Long promenade straight -> wide bay sweeper -> marina chicane -> a fast run
- * back down the beach -> a broad U-turn under the palms onto the promenade.
- * ~1150 m.
+ * Agadir Coast - seaside circuit.
+ * A promenade esse onto the long bay sweeper, then the technical half: a tight
+ * hairpin in the marina, a chicane across the beach straight and a kink into
+ * the palm-lined run home. ~1200 m.
  */
 export const agadirCoast: TrackDefinition = {
   id: 'agadir',
@@ -16,29 +16,34 @@ export const agadirCoast: TrackDefinition = {
   difficulty: 2,
   controlPoints: [
     { x: 0, y: 0, z: 0 }, // 0 finish line, promenade straight
-    { x: 0, y: 0, z: -76.8 },
-    { x: 0, y: 0.6, z: -153.6 },
-    { x: 4.8, y: 1.2, z: -223.2 },
-    { x: 31.2, y: 1.6, z: -276 }, // bay sweeper
-    { x: 81.6, y: 1.8, z: -307.2 },
-    { x: 139.2, y: 1.8, z: -309.6 },
-    { x: 184.8, y: 1.4, z: -283.2 },
-    { x: 208.8, y: 0.8, z: -237.6 },
-    { x: 211.2, y: 0.4, z: -184.8 },
-    { x: 187.2, y: 0, z: -141.6 }, // marina chicane, left then right
-    { x: 153.6, y: 0, z: -115.2 },
-    { x: 156, y: 0, z: -69.6 },
-    { x: 187.2, y: 0, z: -33.6 },
-    { x: 199.2, y: 0, z: 16.8 }, // beach straight
-    { x: 184.8, y: 0, z: 64.8 },
-    { x: 144, y: 0, z: 96 },
-    { x: 93.6, y: 0, z: 103.2 }, // palm U-turn
-    { x: 48, y: 0, z: 93.6 },
-    { x: 14.4, y: 0, z: 64.8 },
+    { x: 0, y: 0, z: -80 },
+    { x: 14, y: 0.6, z: -116 }, // promenade esse
+    { x: 4, y: 1, z: -160 },
+    { x: 2, y: 1.2, z: -212 },
+    { x: 28, y: 1.6, z: -270 }, // bay sweeper
+    { x: 80, y: 1.8, z: -306 },
+    { x: 140, y: 1.8, z: -310 },
+    { x: 186, y: 1.4, z: -284 },
+    { x: 210, y: 0.8, z: -238 },
+    { x: 212, y: 0.4, z: -186 },
+    { x: 188, y: 0, z: -150 }, // into the marina
+    { x: 150, y: 0, z: -142 }, // marina hairpin in
+    { x: 126, y: 0, z: -114 }, // apex
+    { x: 146, y: 0, z: -88 }, // out
+    { x: 186, y: 0, z: -84 },
+    { x: 206, y: 0, z: -52 },
+    { x: 200, y: 0, z: -8 }, // beach chicane
+    { x: 214, y: 0, z: 34 },
+    { x: 190, y: 0, z: 74 },
+    { x: 146, y: 0, z: 100 },
+    { x: 120, y: 0, z: 114 }, // kink into the palms
+    { x: 80, y: 0, z: 104 },
+    { x: 44, y: 0, z: 92 },
+    { x: 12, y: 0, z: 64 },
     { x: 0, y: 0, z: 24 },
   ],
   halfWidth: 8.5,
-  halfWidths: [9, 9, 9, 8.5, 8.5, 8.5, 8.5, 8.5, 8.5, 8, 7.5, 7.5, 7.5, 8, 8.5, 8.5, 8.5, 9, 9, 9, 9],
+  halfWidths: [9, 9, 8.5, 8.5, 8.5, 8.5, 9, 9, 8.5, 8.5, 8.5, 8, 8, 8.5, 8.5, 8.5, 8, 8, 8.5, 8.5, 8.5, 8, 8.5, 8.5, 9, 9],
   wallHalfWidthFactor: 1.5,
   itemBoxRows: [0.08, 0.33, 0.56, 0.8],
   boostPads: [0.2, 0.62, 0.9],

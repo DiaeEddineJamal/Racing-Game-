@@ -27,22 +27,22 @@ import { buildKartModel, type KartModelPartsEx } from './KartModel';
 
 // --- tuning ------------------------------------------------------------------
 /** m/s^2 at (0.5 + acceleration stat) = 1. Medium kart 0 -> 95% top in ~2.5 s. */
-const ACCEL_BASE = 9.0;
+const ACCEL_BASE = 11.7;
 /** Proportional approach toward target speed (1/s). */
 const ACCEL_APPROACH = 2.2;
 /** Acceleration cap / approach while boosting (reaches ~95% of boosted top speed in ~0.3 s). */
-const BOOST_ACCEL = 45;
+const BOOST_ACCEL = 58;
 const BOOST_APPROACH = 7;
-const OVER_SPEED_DECEL_MAX = 10;
+const OVER_SPEED_DECEL_MAX = 13;
 const OVER_SPEED_APPROACH = 2.0;
-const BRAKE_DECEL = 16;
-const COAST_DECEL = 4.5;
+const BRAKE_DECEL = 21;
+const COAST_DECEL = 5.8;
 const REVERSE_FRACTION = 0.35;
-const REVERSE_ACCEL = 5;
-/** Full-lock yaw rate (rad/s) before handling/speed scaling: ~1.2 rad/s at top speed (r ≈ 19 m). */
-const STEER_RATE = 1.9;
-/** Drift yaw rate base: inward ≈ 1.4 rad/s (r ≈ 16 m), neutral ≈ 1.1, counter-steer ≈ 0.77 at top speed. */
-const DRIFT_STEER_RATE = 1.9;
+const REVERSE_ACCEL = 6.5;
+/** Full-lock yaw rate (rad/s) before handling/speed scaling: ~1.5 rad/s at top speed (r ≈ 19 m). */
+const STEER_RATE = 2.45;
+/** Drift yaw rate base: inward ≈ 1.8 rad/s (r ≈ 16 m), neutral ≈ 1.4, counter-steer ≈ 1.0 at top speed. */
+const DRIFT_STEER_RATE = 2.45;
 const HOP_VELOCITY = 4.5;
 const HOP_DRIFT_DELAY = 0.15;
 const DRIFT_MIN_SPEED = 0.45;

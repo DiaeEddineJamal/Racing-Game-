@@ -28,8 +28,14 @@ export const KART_HEIGHT = 0.9;
 /** Radius used for kart-vs-kart and kart-vs-item sphere collisions. */
 export const KART_RADIUS = 0.85;
 
-/** Baseline top speed of a medium kart in m/s (~ 80 km/h). Stats scale around this. */
-export const BASE_TOP_SPEED = 22;
+/**
+ * Baseline top speed of a medium kart in m/s (~103 km/h). Stats scale around
+ * this by +/-7%, so the slowest kart still tops out at 95 km/h and the fastest
+ * at about 110. Everything else that cares about speed - steering rates, the
+ * HUD gauge, camera FOV, AI cornering - is expressed against this, so it all
+ * moves together.
+ */
+export const BASE_TOP_SPEED = 28.5;
 
 /** Number of sequential checkpoints spread evenly along the track (t = i / N). */
 export const CHECKPOINT_COUNT = 12;
