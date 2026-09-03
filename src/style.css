@@ -3012,6 +3012,65 @@ body.touch-device .hud-speed {
   .standing-row {
     font-size: 14px;
   }
+
+  /* Connect and lobby: on a phone the stacked columns plus the footer easily
+     run past the viewport, and #ui clips overflow with nothing to scroll it -
+     the room code, the racer/track chips and START RACE were all reachable
+     only if everything happened to fit. Same treatment as .card-grid: the
+     whole screen becomes the scroll container instead of trying to centre
+     content that no longer fits. */
+  .panel-online,
+  .panel-lobby {
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .online-box {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 18px 18px;
+  }
+
+  .field-row {
+    flex-wrap: wrap;
+  }
+
+  .lobby-code {
+    font-size: clamp(26px, 8vw, 38px);
+  }
+
+  .lobby-col {
+    padding: 12px 14px;
+  }
+
+  .chip-strip {
+    gap: 5px;
+  }
+
+  .chip {
+    font-size: 12px;
+    padding: 7px 11px;
+    /* Chips are tap targets here, not mouse targets - the default padding
+       above reads fine but stays under the 44px minimum without this. */
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .step-rows {
+    gap: 12px 20px;
+  }
+
+  .lobby-cols {
+    gap: 10px;
+  }
 }
 
 /* Phone on its side: wide but only ~390px tall. Cards get shorter, not fewer,
@@ -3390,5 +3449,77 @@ body.touch-device .hud-speed {
 
   .touch-btn-label {
     font-size: calc(var(--btn) * 0.17);
+  }
+}
+
+/* =============================================================================
+   Online: connect / lobby on a landscape phone
+
+   Vertical space is scarcer here than in portrait, so the lobby's three
+   columns (stacked to one at 780px) plus the header and footer very reliably
+   exceed a ~390px-tall screen. Same fix as the portrait breakpoint - the panel
+   scrolls as a whole - plus tighter spacing so less scrolling is needed.
+   ============================================================================= */
+@media (orientation: landscape) and (max-height: 520px) {
+  .panel-online,
+  .panel-lobby {
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .online-box {
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 14px 16px;
+    gap: 10px;
+  }
+
+  .field-row {
+    flex-wrap: wrap;
+  }
+
+  .online-status {
+    font-size: 12px;
+  }
+
+  .lobby-cols {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .lobby-col {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+
+  .lobby-code {
+    font-size: clamp(20px, 6vh, 30px);
+  }
+
+  .chip-strip {
+    gap: 4px;
+  }
+
+  .chip {
+    font-size: 11px;
+    padding: 6px 10px;
+    min-height: 30px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .step-rows {
+    gap: 8px 16px;
+  }
+
+  .board-row {
+    font-size: 11px;
   }
 }
