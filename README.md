@@ -163,16 +163,29 @@ already pay for sidesteps the question entirely.
 
 ### Client on Vercel, server elsewhere
 
-1. Deploy the server to a host that supports WebSockets (build `npm ci`, start
-   `node server/index.js`). Note its URL, say `https://kart-server.onrender.com`.
-2. In the Vercel project settings add an environment variable
-   `VITE_GAME_SERVER` with that URL, then **redeploy** - the value is baked into
-   the bundle at build time, so an existing deployment will not pick it up.
-3. Nothing to change on the server: it reflects the requesting origin in its
-   CORS headers.
+This is the shape to use if you already have the game live on Vercel (or want
+Vercel specifically for the client) and just want online play to work too -
+Vercel keeps serving the client exactly as it does now; only the socket
+connection is redirected to a server running somewhere that can hold a
+WebSocket open.
 
-Free instances on Render and similar hosts sleep when idle, so the first
-connection after a quiet spell can take a few seconds.
+1. Deploy `server/index.js` to a host that supports WebSockets - **Bonto**
+   needs no card, per the section above (build `npm run build`, start
+   `node server/index.js`); Render/Railway/Fly.io work too if a card is fine.
+   Note the URL it gives you, e.g. `https://lmongolyan-kart.bonto.run`.
+2. In the Vercel dashboard: **Project → Settings → Environment Variables** →
+   add `VITE_GAME_SERVER` = that URL (Production, and Preview if you want
+   preview deploys to connect too).
+3. **Redeploy** - Deployments tab → the three-dot menu on the latest one →
+   Redeploy. The value is baked into the JS bundle at build time, so an
+   existing deployment will not pick it up without this step.
+4. Nothing to change on the server itself: it already reflects whatever
+   origin makes the request in its CORS headers, so your `*.vercel.app` domain
+   is accepted automatically.
+
+A free server sleeps when idle, so the first connection after a quiet spell
+takes a few seconds to a minute while it wakes - the lobby says so instead of
+looking stuck, and the client keeps retrying rather than giving up early.
 
 ### GitHub Pages
 
