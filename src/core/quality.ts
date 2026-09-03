@@ -131,6 +131,8 @@ export class AdaptiveResolution {
   /** Rolling average frame time in seconds. */
   private avg = 1 / 60;
   private cooldown = 1.5;
+  /** Seconds spent at the resolution floor while still missing the budget. */
+  private floorTime = 0;
 
   constructor(
     private readonly min: number,
@@ -144,10 +146,20 @@ export class AdaptiveResolution {
     return this.scale;
   }
 
+  /**
+   * True when the smallest render scale still is not enough. There is nothing
+   * left to take from resolution, so the caller should drop something bigger -
+   * post-processing is the usual candidate.
+   */
+  get overloaded(): boolean {
+    return this.floorTime > 3;
+  }
+
   reset(): void {
     this.scale = 1;
     this.avg = 1 / 60;
     this.cooldown = 1.5;
+    this.floorTime = 0;
   }
 
   /** Returns true when the scale changed and the renderer needs resizing. */
@@ -155,6 +167,8 @@ export class AdaptiveResolution {
     // Ignore hitches (tab switches, GC pauses): they are not a resolution problem.
     if (dt > 0.25) return false;
     this.avg += (dt - this.avg) * 0.06;
+    if (this.scale <= this.min && this.avg > this.budget) this.floorTime += dt;
+    else this.floorTime = 0;
     if (this.cooldown > 0) {
       this.cooldown -= dt;
       return false;

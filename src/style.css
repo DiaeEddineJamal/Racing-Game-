@@ -2397,9 +2397,11 @@ body.touch-device {
   --touch-side: max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px), 12px);
   --touch-top: max(env(safe-area-inset-top, 0px), 10px);
   /* Base button diameter; GAS and DRIFT scale up from it. */
-  --btn: clamp(56px, 13vmin, 84px);
-  --steer-w: min(44vw, 300px);
-  --steer-h: clamp(92px, 23vmin, 128px);
+  --btn: clamp(52px, 12vmin, 78px);
+  /* The steer bar only needs to be as wide as a thumb sweeps - past that it
+     covers track for nothing. */
+  --steer-w: min(34vw, 232px);
+  --steer-h: clamp(76px, 19vmin, 104px);
   /* Vertical strip the driving controls occupy. Nothing else may live here. */
   --touch-band: max(var(--steer-h), calc(var(--btn) * 2.55));
 }
@@ -2503,8 +2505,8 @@ body.touch-device .version {
   position: absolute;
   top: 44%;
   left: 50%;
-  width: clamp(26px, 6.5vmin, 36px);
-  height: clamp(26px, 6.5vmin, 36px);
+  width: clamp(22px, calc(var(--steer-h) * 0.26), 32px);
+  height: clamp(22px, calc(var(--steer-h) * 0.26), 32px);
   border-radius: 50%;
   background: #f4f6ff;
   border: 2px solid rgba(55, 168, 255, 0.9);
@@ -2517,8 +2519,8 @@ body.touch-device .version {
 .touch-arrow {
   position: relative;
   z-index: 1;
-  width: clamp(44px, 10vmin, 62px);
-  height: clamp(44px, 10vmin, 62px);
+  width: clamp(34px, calc(var(--steer-h) * 0.54), 58px);
+  height: clamp(34px, calc(var(--steer-h) * 0.54), 58px);
   display: grid;
   place-items: center;
   border-radius: 16px;
@@ -2685,6 +2687,7 @@ body.touch-device .version {
   display: flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
   gap: 6px;
   min-width: 48px;
   min-height: 42px;
@@ -2833,26 +2836,32 @@ body.touch-device .hud-speed {
   }
 
   body.touch-device {
-    --btn: clamp(64px, 16vw, 96px);
-    --steer-w: min(46vw, 260px);
-    --steer-h: clamp(104px, 26vw, 150px);
+    --btn: clamp(56px, 14.5vw, 84px);
+    --steer-w: min(40vw, 186px);
+    --steer-h: clamp(84px, 22vw, 112px);
   }
 
-  /* Centre chips would sit on top of the minimap on a narrow screen. */
+  /* The centre-top is where the lap counter and the map live on a narrow
+     screen, so the chips tuck under the item box on the left instead. */
   body.touch-device .touch-corner {
-    left: auto;
-    right: 50%;
-    transform: translateX(50%);
-    top: calc(var(--touch-top) + clamp(96px, 22vw, 130px));
+    /* --hud-pad belongs to .hud, so use the pad layer's own inset here. */
+    left: var(--touch-side);
+    right: auto;
+    transform: none;
+    top: calc(var(--touch-top) + clamp(80px, 21vw, 104px));
+  }
+
+  body.touch-device .hud-minimap {
+    top: calc(var(--hud-pad) + clamp(88px, 24vw, 112px));
   }
 }
 
 /* Short landscape (a phone on its side): every pixel of height counts. */
 @media (orientation: landscape) and (max-height: 520px) {
   body.touch-device {
-    --btn: clamp(52px, 15vh, 76px);
-    --steer-w: min(38vw, 260px);
-    --steer-h: clamp(84px, 24vh, 108px);
+    --btn: clamp(46px, 13.5vh, 68px);
+    --steer-w: min(27vw, 196px);
+    --steer-h: clamp(62px, 18vh, 84px);
   }
 
   body.touch-device .hud-minimap {
@@ -3114,5 +3123,272 @@ body.touch-device .hud-speed {
   .select-info-tagline,
   .difficulty-blurb {
     display: none;
+  }
+}
+
+/* =============================================================================
+   Results on a phone
+
+   The panel is a fixed block of eight rows plus a title and three buttons, and
+   on a short screen it simply does not fit. Rather than let it run off the top
+   and bottom, the panel becomes a column that never exceeds the viewport and
+   the standings scroll inside it, so the buttons are always reachable and every
+   racer can be read.
+   ============================================================================= */
+
+@media (max-width: 780px), (orientation: landscape) and (max-height: 520px) {
+  .results-panel {
+    display: flex;
+    flex-direction: column;
+    width: min(94vw, 560px);
+    max-height: calc(100dvh - 16px);
+    padding: 12px 14px 14px;
+    gap: 2px;
+  }
+
+  .results-panel .panel-kicker {
+    font-size: 10px;
+    letter-spacing: 0.3em;
+  }
+
+  .results-title {
+    font-size: clamp(26px, 8vw, 40px);
+    line-height: 1.05;
+  }
+
+  .results-sub {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+
+  .standings {
+    /* The one part that may scroll; everything else stays put. */
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    gap: 4px;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  .standing-row {
+    grid-template-columns: 42px 12px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 10px;
+  }
+
+  .standing-place {
+    font-size: 15px;
+  }
+
+  .standing-chip {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* One line per racer: a wrapped name is what pushed the list off-screen. */
+  .standing-name {
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .standing-time {
+    font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+
+  .results-panel .actions {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .results-panel .btn {
+    font-size: 12px;
+    padding: 9px 16px;
+    min-height: 40px;
+  }
+}
+
+/* Landscape phone: the shortest screen there is, so the title, the results and
+   the pause menu all get their own compaction pass. */
+@media (orientation: landscape) and (max-height: 520px) {
+  /* --- title screen: logo up top, modes side by side, kart left clear ------ */
+  .panel-title-screen {
+    justify-content: flex-start;
+    padding: 1.5vh 4vw 0;
+    gap: 2px;
+  }
+
+  .logo-word-0 {
+    font-size: clamp(20px, 6.5vh, 34px);
+  }
+
+  .logo-word-1 {
+    font-size: clamp(26px, 9vh, 46px);
+  }
+
+  .logo-sub {
+    margin-top: 4px;
+    font-size: 9px;
+    letter-spacing: 0.42em;
+  }
+
+  .title-modes {
+    flex-direction: row;
+    width: auto;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .title-modes .btn {
+    font-size: 13px;
+    padding: 10px 22px;
+    min-height: 42px;
+  }
+
+  .version {
+    display: none;
+  }
+
+  /* --- results: two columns so eight rows fit next to the headline --------- */
+  .results-panel {
+    width: min(96vw, 720px);
+    max-height: calc(100dvh - 10px);
+    padding: 10px 14px 12px;
+  }
+
+  .results-title {
+    font-size: clamp(20px, 6.5vh, 30px);
+  }
+
+  .results-sub {
+    display: none;
+  }
+
+  .standing-row {
+    padding: 4px 10px;
+  }
+
+  .standing-place,
+  .standing-name {
+    font-size: 12px;
+  }
+
+  .standing-time {
+    font-size: 11px;
+  }
+
+  /* --- pause and other panels --------------------------------------------- */
+  .panel {
+    padding: 12px 16px;
+    max-height: calc(100dvh - 12px);
+    overflow: auto;
+  }
+
+  .panel-title {
+    font-size: clamp(18px, 5vh, 28px);
+  }
+
+  .lobby-cols {
+    gap: 10px;
+  }
+}
+
+/* =============================================================================
+   Driving HUD refinements
+
+   With the pads smaller, the readouts can move back in from the edges. The
+   numbers below are all expressed against --steer-h / --touch-band so they
+   follow whatever size the pads end up at.
+   ============================================================================= */
+
+@media (orientation: portrait) and (pointer: coarse) {
+  /* Speed sits between the two pads, place above the steer bar: both stay out
+     of the thumbs' arcs and out of the middle of the road. */
+  body.touch-device .hud-speed {
+    left: 50%;
+    bottom: calc(var(--touch-band) + var(--touch-inset) + 6px);
+    width: clamp(58px, 15vw, 84px);
+  }
+
+  body.touch-device .hud-place {
+    bottom: calc(var(--touch-band) + var(--touch-inset) + 6px);
+  }
+
+  body.touch-device .hud-place .place-num {
+    font-size: clamp(30px, 11vw, 52px);
+  }
+
+  body.touch-device .touch-corner {
+    gap: 6px;
+  }
+
+  body.touch-device .touch-mini,
+  body.touch-device .touch-auto {
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 10px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  /* Landscape has room across the bottom middle, so the speedo lives there and
+     the place indicator tucks above the steer bar. */
+  body.touch-device .hud-speed {
+    bottom: calc(var(--touch-inset) + 14px);
+    width: clamp(52px, 14vh, 72px);
+  }
+
+  body.touch-device .hud-place {
+    bottom: calc(var(--touch-inset) + var(--steer-h) + 6px);
+  }
+
+  body.touch-device .hud-place .place-num {
+    font-size: clamp(28px, 10vh, 46px);
+  }
+
+  body.touch-device .hud-item {
+    top: calc(var(--hud-pad) - 2px);
+  }
+
+  body.touch-device .item-frame {
+    width: clamp(46px, 13vh, 66px);
+  }
+
+  body.touch-device .hud-minimap {
+    top: calc(var(--hud-pad) + clamp(86px, 24vh, 106px));
+    --minimap-size: clamp(56px, 17vh, 80px);
+  }
+
+  body.touch-device .touch-corner {
+    top: calc(var(--touch-top) - 2px);
+    gap: 6px;
+  }
+
+  body.touch-device .touch-mini,
+  body.touch-device .touch-auto {
+    min-height: 32px;
+    padding: 0 9px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+  }
+
+  body.touch-device .touch-mini.look {
+    min-height: clamp(34px, 9vh, 46px);
+  }
+
+  .touch-steer-caption {
+    font-size: 9px;
+    letter-spacing: 0.24em;
+  }
+
+  .touch-btn-label {
+    font-size: calc(var(--btn) * 0.17);
   }
 }

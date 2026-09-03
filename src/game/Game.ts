@@ -32,7 +32,7 @@ import { CHARACTERS, getCharacter } from '../kart/roster';
 import { Track } from '../track/Track';
 import { TRACKS, getTrackDef } from '../track/tracks';
 import { ItemManager } from '../items/ItemManager';
-import { buildItemIcon } from '../items/itemVisuals';
+import { buildItemIcon, warmItemVisuals } from '../items/itemVisuals';
 import { AIDriver } from '../ai/AIDriver';
 import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystem } from '../fx/ParticleSystem';
@@ -152,6 +152,10 @@ export class Game {
   private loadingFrames = 0;
   private loadingProgress = 0;
   private shadersReady = false;
+  /** One of every item mesh, in the scene only while shaders compile. */
+  private warmup: THREE.Group | null = null;
+  /** True once this race has had its one all-objects warm-up draw. */
+  private warmDrawn = false;
 
   private rafId = 0;
   private lastTime = -1;
@@ -361,6 +365,13 @@ export class Game {
       this.renderScale = this.adaptive.value;
       this.onResize();
     }
+    // Resolution has bottomed out and frames are still long: bloom and the
+    // composite pass are two full-screen passes this device cannot afford.
+    // One-way for the rest of the race, so the picture never pumps.
+    if (this.race && this.postfxOk && this.adaptive.overloaded) {
+      this.postfxOk = false;
+      this.safe(() => this.postfx.setEnabled(false));
+    }
 
     const input = this.input.update();
     try {
@@ -455,6 +466,16 @@ export class Game {
 
     if (this.race && ready) {
       // Warm the remaining passes (shadow depth, post-processing) behind the overlay.
+      // The warm-up items ride just in front of the camera, tiny, so they are
+      // genuinely drawn: creating a program is cheap, but the driver only
+      // finishes linking it at the first draw, and that is the stall we are
+      // hiding here. The loading overlay covers them.
+      if (this.warmup) {
+        this.camera.getWorldDirection(this.tmpA);
+        this.warmup.position.copy(this.camera.position).addScaledVector(this.tmpA, 0.7);
+        this.warmup.scale.setScalar(0.01);
+      }
+      this.warmDrawAll();
       this.renderRace(dt, false);
       if (this.loadingElapsed >= MIN_LOADING_SECONDS && this.loadingProgress > 0.985) this.enterCountdown();
     }
@@ -465,6 +486,14 @@ export class Game {
     const r = this.race;
     this.shadersReady = false;
     if (!r) return;
+    // Item meshes are built on first use, so the first banana of a race would
+    // otherwise cost a geometry build and a shader compile mid-corner. One of
+    // each is parked under the track for the compile and the loading-screen
+    // frames, then removed at the countdown (see dropWarmup).
+    if (!this.warmup) {
+      this.warmup = warmItemVisuals();
+      this.scene.add(this.warmup);
+    }
     const renderer = this.renderer as { compileAsync?: (s: THREE.Object3D, c: THREE.Camera) => Promise<unknown> };
     if (typeof renderer.compileAsync !== 'function') {
       this.shadersReady = true;
@@ -611,6 +640,53 @@ export class Game {
     requestAnimationFrame(() => {
       if (this.race === r) sun.intensity = base;
     });
+  }
+
+  /**
+   * Draws every object in the race once, with frustum culling off.
+   *
+   * Creating a shader program is cheap; the driver only finishes linking it at
+   * the first draw that uses it, and that link blocks the frame - 80-120ms on
+   * a desktop GPU, worse on a phone. Culling means a prop that is behind the
+   * kart at the start pays that cost mid-corner instead, which is exactly the
+   * stutter players feel. One wide, uncullled frame behind the loading overlay
+   * pays for all of them up front, including the shadow and post passes.
+   */
+  private warmDrawAll(): void {
+    if (this.warmDrawn || !this.race) return;
+    this.warmDrawn = true;
+    const restored: THREE.Object3D[] = [];
+    this.scene.traverse((o) => {
+      if (o.frustumCulled) {
+        o.frustumCulled = false;
+        restored.push(o);
+      }
+    });
+    const cam = this.camera;
+    const fov = cam.fov;
+    const far = cam.far;
+    cam.fov = 120;
+    cam.far = 4000;
+    cam.updateProjectionMatrix();
+    try {
+      this.render(0);
+    } finally {
+      cam.fov = fov;
+      cam.far = far;
+      cam.updateProjectionMatrix();
+      for (const o of restored) o.frustumCulled = true;
+    }
+  }
+
+  /**
+   * Takes the warm-up items back out of the scene. Their geometries, materials
+   * and compiled programs live in the itemVisuals caches, so real items spawned
+   * during the race reuse them - nothing here is disposed.
+   */
+  private dropWarmup(): void {
+    if (!this.warmup) return;
+    this.scene.remove(this.warmup);
+    this.warmup = null;
   }
 
   private updateSun(r: RaceContext, player: IKart): void {
@@ -975,6 +1051,7 @@ export class Game {
   private enterCountdown(): void {
     const r = this.race;
     if (!r) return;
+    this.dropWarmup();
     this.pendingSettings = null;
     this.loading.hide();
     r.hud.show();
@@ -1073,6 +1150,8 @@ export class Game {
     for (const u of r.unsubs) u();
     r.unsubs.length = 0;
 
+    this.dropWarmup();
+    this.warmDrawn = false;
     this.scene.remove(r.track.object);
     for (const k of r.karts) this.scene.remove(k.object);
     this.scene.remove(r.items.object);

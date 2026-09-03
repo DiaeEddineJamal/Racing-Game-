@@ -879,6 +879,48 @@ export function buildItemMesh(item: ItemType): THREE.Object3D {
   }
 }
 
+/** Every item that has a mesh, in the order a warm-up should build them. */
+const WARM_ITEMS: readonly ItemType[] = [
+  'banana',
+  'green_shell',
+  'red_shell',
+  'blue_shell',
+  'mushroom',
+  'golden_mushroom',
+  'star',
+  'lightning',
+  'bob_omb',
+];
+
+/**
+ * One of every item mesh, parked far under the track.
+ *
+ * Item geometry, materials and textures are built on first use and cached, so
+ * without this the first banana of a race costs a geometry build plus a shader
+ * compile in the middle of a corner - a single frame of well over 100ms. Adding
+ * this group to the scene before the loading screen's compileAsync moves all of
+ * that behind the progress bar; the caller removes the group afterwards, and
+ * the caches it filled stay warm for the rest of the race.
+ */
+export function warmItemVisuals(): THREE.Group {
+  const group = new THREE.Group();
+  // The caller parks this in front of the camera during the loading screen; it
+  // starts below the world so a stray frame can never show it.
+  group.position.set(0, -600, 0);
+  for (const item of WARM_ITEMS) {
+    const mesh = buildItemMesh(item);
+    // Draw them even though they sit far outside the view. Creating a program
+    // is not the expensive part - the driver finishes linking it at the first
+    // draw, and that is the stall we are moving behind the loading screen. The
+    // shadow pass has its own programs and honours this flag too.
+    mesh.traverse((o) => {
+      o.frustumCulled = false;
+    });
+    group.add(mesh);
+  }
+  return group;
+}
+
 /** Base (non-triple) item type, e.g. 'triple_red_shell' -> 'red_shell'. */
 export function baseItemType(item: ItemType): ItemType {
   switch (item) {
