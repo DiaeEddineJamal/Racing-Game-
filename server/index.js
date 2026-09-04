@@ -186,6 +186,27 @@ const io = new Server(server, {
   cors: { origin: true, credentials: true },
   pingInterval: 12000,
   pingTimeout: 20000,
+  // Position snapshots are small and go out ~30 times a second per kart -
+  // compressing them costs more CPU (and, per packet, more wall-clock time)
+  // than it ever saves in bytes. Both flags are off by default in recent
+  // Engine.IO, but that has changed before and setting them explicitly means
+  // a version bump can't quietly reintroduce per-message deflate here.
+  perMessageDeflate: false,
+  httpCompression: false,
+});
+
+// Nagle's algorithm batches small writes to fill a full TCP segment before
+// sending, which is exactly wrong for a stream of tiny, frequent kart
+// snapshots: it can hold one back for tens of milliseconds waiting for more
+// data that never comes. Disabling it trades a little bandwidth efficiency
+// for lower latency on every packet, which is the right trade for real-time
+// state - see the Socket.IO performance guide.
+io.engine.on('connection', (rawSocket) => {
+  try {
+    rawSocket.setNoDelay(true);
+  } catch {
+    /* not every transport (long-polling) exposes a raw TCP socket here */
+  }
 });
 
 io.on('connection', (socket) => {

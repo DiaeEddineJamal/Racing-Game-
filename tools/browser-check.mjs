@@ -64,6 +64,41 @@ function watch(page, label) {
   });
 }
 
+/**
+ * Chromium fully throttles requestAnimationFrame on a hidden tab, and this
+ * game's whole loop - state transitions, physics, everything - runs on rAF.
+ * Two puppeteer pages are two tabs in one window, so whichever one is not
+ * frontmost simply stops simulating; that looked for a long time like "the
+ * host never enters the race" or "the guest's kart never moves", when really
+ * it was the test harness starving one side of raf ticks that two separate
+ * real players, each foregrounded on their own device, would never starve.
+ * This keeps both pages progressing by trading the foreground between them.
+ */
+async function pumpBothForeground(pages, totalMs, sliceMs = 250) {
+  const deadline = Date.now() + totalMs;
+  while (Date.now() < deadline) {
+    for (const p of pages) {
+      await p.bringToFront();
+      await sleep(sliceMs);
+    }
+  }
+}
+
+/** Same idea, but stops as soon as every page satisfies `predicate`. */
+async function pumpUntil(pages, predicate, totalMs, sliceMs = 250) {
+  const deadline = Date.now() + totalMs;
+  const done = pages.map(() => false);
+  while (Date.now() < deadline && done.includes(false)) {
+    for (let i = 0; i < pages.length; i++) {
+      if (done[i]) continue;
+      await pages[i].bringToFront();
+      await sleep(sliceMs);
+      done[i] = await predicate(pages[i]);
+    }
+  }
+  return done;
+}
+
 const clickText = async (page, text) => {
   const ok = await page.evaluate((t) => {
     const b = [...document.querySelectorAll('button')].find(
@@ -281,25 +316,40 @@ await sleep(500);
 await clickText(page2, 'READY');
 await sleep(600);
 
+await page.bringToFront();
 await clickText(page, 'START RACE');
-const bothRacing = await Promise.all(
-  [page, page2].map((p) =>
-    p
-      .waitForFunction(() => ['countdown', 'racing'].includes(document.getElementById('ui')?.dataset.state), {
-        timeout: 90000,
-      })
-      .then(() => true)
-      .catch(() => false),
-  ),
-);
+const isRacing = (p) => p.evaluate(() => ['countdown', 'racing'].includes(document.getElementById('ui')?.dataset.state));
+const bothRacing = await pumpUntil([page, page2], isRacing, 90000);
 if (!bothRacing[0]) problems.push('online: the host never entered the race');
 if (!bothRacing[1]) problems.push('online: the guest never entered the race');
 
-await sleep(4000);
-await page.keyboard.down('KeyW');
-await page2.keyboard.down('KeyW');
-await sleep(6000);
+await pumpBothForeground([page, page2], 4000, 350);
+// InputManager clears held keys on window blur - correct for a real player
+// (a key must not stay "stuck" if they alt-tab mid-race), but it means the
+// synthetic keydown from before a page was backgrounded does not survive
+// bringing it back: re-press it each time this page regains the foreground,
+// which is what an actually-held key looks like from its point of view.
+const deadline = Date.now() + 16000;
+while (Date.now() < deadline) {
+  for (const p of [page, page2]) {
+    await p.bringToFront();
+    // Puppeteer tracks "is this key already down" per page and marks a
+    // second down() without an intervening up() as a key-repeat event -
+    // which InputManager correctly ignores (a real repeat must not
+    // re-arm a key that blur already released). From Puppeteer's side the
+    // key was never released, so without this the re-press after a focus
+    // change is silently swallowed as a repeat and the kart coasts to a
+    // stop. up() first makes the next down() a genuine fresh press again.
+    await p.keyboard.up('KeyW');
+    await p.keyboard.down('KeyW');
+    // bringToFront costs real compositor time under software rendering, so
+    // budget more than the 5-6 frames a kart needs to clear the threshold.
+    await sleep(800);
+  }
+}
+await page.bringToFront();
 await page.screenshot({ path: path.join(OUT, '42-online-host.png') });
+await page2.bringToFront();
 await page2.screenshot({ path: path.join(OUT, '43-online-guest.png') });
 
 // Does the host actually see the guest's kart moving where the guest put it?

@@ -1270,6 +1270,12 @@ export class Game {
   };
 
   private readonly onVisibility = (): void => {
+    // Switching tabs or, on a phone, switching apps: audio keeps rendering in
+    // a hidden tab unless something suspends it, so menu and race music (and
+    // engine sound) would otherwise carry on playing to no one. This runs
+    // regardless of online/offline - unlike onBlur, it never touches the race
+    // itself, only whether sound is coming out of the speakers.
+    this.safe(() => this.audio.setBackgrounded?.(document.hidden));
     if (document.hidden) this.onBlur();
   };
 

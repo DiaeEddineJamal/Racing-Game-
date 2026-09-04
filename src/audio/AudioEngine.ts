@@ -222,6 +222,24 @@ export class AudioEngine implements IAudioEngine {
     void this.samples.load();
   }
 
+  /**
+   * Suspends the AudioContext when the tab/app goes to the background and
+   * resumes it when it comes back, independent of the player's own mute
+   * toggle - `_muted` is untouched, so returning to the tab restores whatever
+   * the player had before, muted or not. Web Audio keeps rendering in a
+   * hidden tab unless something explicitly suspends it, which is what left
+   * music and engine sound running after switching away.
+   */
+  setBackgrounded(hidden: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx || this.disposed) return;
+    if (hidden) {
+      if (ctx.state === 'running') void ctx.suspend().catch(() => {});
+    } else if (ctx.state === 'suspended') {
+      void ctx.resume().catch(() => {});
+    }
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;

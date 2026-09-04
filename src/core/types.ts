@@ -507,6 +507,12 @@ export interface IAudioEngine {
   setMasterVolume(v: number): void;
   setMuted(muted: boolean): void;
   readonly muted: boolean;
+  /**
+   * Suspends/resumes audio processing without touching the mute toggle - for
+   * the tab going to the background, not the player's own mute preference.
+   * Optional; ignored when absent.
+   */
+  setBackgrounded?(hidden: boolean): void;
   dispose(): void;
 }
 
