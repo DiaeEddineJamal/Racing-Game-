@@ -89,6 +89,7 @@ function submitTime(trackId, row) {
 const rooms = new Map();
 /** Tiny two-player rooms shared by the separate Mangolian Pong project. */
 const pongRooms = new Map();
+const PONG = { width: 960, height: 540, paddleHeight: 148, speed: 440, tickMs: 1000 / 60 };
 
 /**
  * Strips angle brackets and control characters only. Names legitimately contain
@@ -121,6 +122,75 @@ function newPongCode() {
   return null;
 }
 
+function freshPongState() {
+  return {
+    left: PONG.height / 2 - PONG.paddleHeight / 2,
+    right: PONG.height / 2 - PONG.paddleHeight / 2,
+    ball: { x: PONG.width / 2, y: PONG.height / 2 },
+    velocity: { x: 275, y: 132 },
+    leftScore: 0, rightScore: 0, hits: 0, storm: 0, nextStorm: 12, paused: false,
+  };
+}
+
+function resetPongBall(state, toLeft = Math.random() > 0.5) {
+  state.ball = { x: PONG.width / 2, y: PONG.height / 2 };
+  state.velocity = {
+    x: (toLeft ? -1 : 1) * (260 + Math.min(state.hits * 8, 170)),
+    y: Math.random() * 180 - 90,
+  };
+  state.hits = 0;
+}
+
+function tickPong(room, dt) {
+  if (!room.playing || room.players.size !== 2) return;
+  const s = room.state;
+  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+  const left = room.inputs.left;
+  const right = room.inputs.right;
+  const leftMove = (left.up ? -1 : 0) + (left.down ? 1 : 0);
+  const rightMove = (right.up ? -1 : 0) + (right.down ? 1 : 0);
+  s.left = clamp(s.left + leftMove * PONG.speed * dt, 0, PONG.height - PONG.paddleHeight);
+  s.right = clamp(s.right + rightMove * PONG.speed * dt, 0, PONG.height - PONG.paddleHeight);
+  s.ball.x += s.velocity.x * dt;
+  s.ball.y += s.velocity.y * dt;
+  if (s.ball.y < 14 || s.ball.y > PONG.height - 14) {
+    s.velocity.y *= -1;
+    s.ball.y = clamp(s.ball.y, 14, PONG.height - 14);
+  }
+  const leftHit = s.velocity.x < 0 && s.ball.x - 18 < 76 && s.ball.x + 18 > 24 && s.ball.y > s.left && s.ball.y < s.left + PONG.paddleHeight;
+  const rightHit = s.velocity.x > 0 && s.ball.x + 18 > PONG.width - 76 && s.ball.x - 18 < PONG.width - 24 && s.ball.y > s.right && s.ball.y < s.right + PONG.paddleHeight;
+  if (leftHit || rightHit) {
+    const paddleY = leftHit ? s.left : s.right;
+    const relative = (s.ball.y - (paddleY + PONG.paddleHeight / 2)) / (PONG.paddleHeight / 2);
+    s.velocity.x = (leftHit ? 1 : -1) * Math.min(Math.abs(s.velocity.x) + 21, 610);
+    s.velocity.y += relative * 105;
+    s.ball.x = leftHit ? 78 : PONG.width - 78;
+    s.hits++;
+  }
+  if (s.ball.x < -30 || s.ball.x > PONG.width + 30) {
+    const leftWon = s.ball.x > PONG.width + 30;
+    if (leftWon) s.leftScore++; else s.rightScore++;
+    if ((leftWon ? s.leftScore : s.rightScore) >= 11) {
+      s.leftScore = 0;
+      s.rightScore = 0;
+    }
+    resetPongBall(s, !leftWon);
+  }
+  s.nextStorm -= dt;
+  if (s.nextStorm <= 0) {
+    s.storm = s.storm ? 0 : 5.5;
+    s.nextStorm = s.storm ? 5.5 : 12;
+    if (s.storm) s.velocity.y *= 1.65;
+  }
+  if (s.storm) {
+    s.storm -= dt;
+    room.elapsed += dt;
+    s.velocity.y += Math.sin(room.elapsed * 6) * 2.8;
+  }
+  room.frames = (room.frames + 1) % 2;
+  if (room.frames === 0) io.to(room.code).volatile.emit('pong:state', s);
+}
+
 function publicPongRoom(room) {
   return { code: room.code, hostId: room.hostId, players: [...room.players.values()] };
 }
@@ -142,6 +212,8 @@ function leavePongRoom(socket) {
     pongRooms.delete(code);
     return;
   }
+  room.playing = false;
+  room.inputs = { left: { up: false, down: false }, right: { up: false, down: false } };
   if (room.hostId === socket.id) {
     // A Pong match is host-authoritative; losing the host returns the guest to the lobby.
     room.hostId = room.players.keys().next().value;
@@ -264,7 +336,11 @@ io.on('connection', (socket) => {
       if (typeof ack === 'function') ack({ error: 'No room codes are available right now.' });
       return;
     }
-    const room = { code, hostId: socket.id, players: new Map(), touched: Date.now() };
+    const room = {
+      code, hostId: socket.id, players: new Map(), touched: Date.now(),
+      inputs: { left: { up: false, down: false }, right: { up: false, down: false } },
+      state: freshPongState(), playing: false, frames: 0, elapsed: 0, lastTick: Date.now(),
+    };
     room.players.set(socket.id, { id: socket.id, side: 'left' });
     pongRooms.set(code, room);
     socket.join(code);
@@ -294,18 +370,27 @@ io.on('connection', (socket) => {
   socket.on('pong:leave', () => leavePongRoom(socket));
   socket.on('pong:input', (input = {}) => {
     const room = pongRooms.get(socket.data.pongRoomCode);
-    if (!room || !room.players.has(socket.id) || typeof input.key !== 'string') return;
-    socket.to(room.code).emit('pong:input', { side: room.players.get(socket.id).side, key: input.key, down: !!input.down });
-  });
-  socket.on('pong:state', (snapshot) => {
-    const room = pongRooms.get(socket.data.pongRoomCode);
-    if (!room || room.hostId !== socket.id || !snapshot || typeof snapshot !== 'object') return;
-    socket.to(room.code).volatile.emit('pong:state', snapshot);
+    const player = room?.players.get(socket.id);
+    if (!room || !player) return;
+    const legacyKey = String(input.key ?? '').toLowerCase();
+    const action = input.action === 'up' || input.action === 'down'
+      ? input.action
+      : legacyKey === 'w' || legacyKey === 'arrowup' ? 'up' : legacyKey === 's' || legacyKey === 'arrowdown' ? 'down' : null;
+    if (!action) return;
+    room.inputs[player.side][action] = !!input.down;
+    room.touched = Date.now();
   });
   socket.on('pong:start', () => {
     const room = pongRooms.get(socket.data.pongRoomCode);
     if (!room || room.hostId !== socket.id || room.players.size !== 2) return;
+    room.state = freshPongState();
+    room.inputs = { left: { up: false, down: false }, right: { up: false, down: false } };
+    room.playing = true;
+    room.frames = 0;
+    room.elapsed = 0;
+    room.lastTick = Date.now();
     io.to(room.code).emit('pong:start', {});
+    io.to(room.code).emit('pong:state', room.state);
   });
 
   socket.on('room:create', (payload, ack) => {
@@ -511,6 +596,17 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => { leaveRoom(socket); leavePongRoom(socket); });
 });
+
+// Online Pong is server-authoritative: input arrives from both browsers, while
+// a fixed simulation tick keeps their paddles and ball in the same timeline.
+setInterval(() => {
+  const now = Date.now();
+  for (const room of pongRooms.values()) {
+    const dt = Math.min((now - room.lastTick) / 1000, 0.05);
+    room.lastTick = now;
+    tickPong(room, dt);
+  }
+}, PONG.tickMs);
 
 // Merged snapshot relay. One packet per room per tick, sent volatile: if a
 // client's socket is backed up, the right thing is to drop this frame's
