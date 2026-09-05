@@ -87,6 +87,8 @@ function submitTime(trackId, row) {
 
 /** code -> room */
 const rooms = new Map();
+/** Tiny two-player rooms shared by the separate Mangolian Pong project. */
+const pongRooms = new Map();
 
 /**
  * Strips angle brackets and control characters only. Names legitimately contain
@@ -109,6 +111,44 @@ function newCode() {
     if (!rooms.has(code)) return code;
   }
   return null;
+}
+
+function newPongCode() {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const code = newCode();
+    if (code && !pongRooms.has(code)) return code;
+  }
+  return null;
+}
+
+function publicPongRoom(room) {
+  return { code: room.code, hostId: room.hostId, players: [...room.players.values()] };
+}
+
+function broadcastPong(room) {
+  room.touched = Date.now();
+  io.to(room.code).emit('pong:room', publicPongRoom(room));
+}
+
+function leavePongRoom(socket) {
+  const code = socket.data.pongRoomCode;
+  if (!code) return;
+  socket.data.pongRoomCode = null;
+  const room = pongRooms.get(code);
+  if (!room) return;
+  room.players.delete(socket.id);
+  socket.leave(code);
+  if (room.players.size === 0) {
+    pongRooms.delete(code);
+    return;
+  }
+  if (room.hostId === socket.id) {
+    // A Pong match is host-authoritative; losing the host returns the guest to the lobby.
+    room.hostId = room.players.keys().next().value;
+    for (const player of room.players.values()) player.side = 'left';
+    io.to(code).emit('pong:hostChanged', { hostId: room.hostId });
+  }
+  broadcastPong(room);
 }
 
 function publicRoom(room) {
@@ -159,7 +199,7 @@ function leaveRoom(socket) {
 
 const app = express();
 app.use(compression());
-app.get('/healthz', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
+app.get('/healthz', (_req, res) => res.json({ ok: true, racingRooms: rooms.size, pongRooms: pongRooms.size }));
 app.get('/api/leaderboard/:trackId', (req, res) => {
   res.json({ trackId: req.params.trackId, rows: leaderboard[req.params.trackId] ?? [] });
 });
@@ -211,7 +251,62 @@ io.engine.on('connection', (rawSocket) => {
 
 io.on('connection', (socket) => {
   socket.data.roomCode = null;
+  socket.data.pongRoomCode = null;
   socket.data.name = 'Racer';
+
+  // --- Mangolian Pong rooms -------------------------------------------------
+  // The host advances the deterministic game loop and relays snapshots; the
+  // server owns admission, codes, and which side each connected player uses.
+  socket.on('pong:create', (_payload, ack) => {
+    leavePongRoom(socket);
+    const code = newPongCode();
+    if (!code) {
+      if (typeof ack === 'function') ack({ error: 'No room codes are available right now.' });
+      return;
+    }
+    const room = { code, hostId: socket.id, players: new Map(), touched: Date.now() };
+    room.players.set(socket.id, { id: socket.id, side: 'left' });
+    pongRooms.set(code, room);
+    socket.join(code);
+    socket.data.pongRoomCode = code;
+    if (typeof ack === 'function') ack({ room: publicPongRoom(room), you: socket.id });
+    broadcastPong(room);
+  });
+
+  socket.on('pong:join', ({ code } = {}, ack) => {
+    const room = pongRooms.get(sanitize(code, ROOM_CODE_LENGTH).toUpperCase());
+    if (!room) {
+      if (typeof ack === 'function') ack({ error: 'No Pong room has that code.' });
+      return;
+    }
+    if (room.players.size >= 2) {
+      if (typeof ack === 'function') ack({ error: 'That Pong room already has two players.' });
+      return;
+    }
+    leavePongRoom(socket);
+    room.players.set(socket.id, { id: socket.id, side: 'right' });
+    socket.join(room.code);
+    socket.data.pongRoomCode = room.code;
+    if (typeof ack === 'function') ack({ room: publicPongRoom(room), you: socket.id });
+    broadcastPong(room);
+  });
+
+  socket.on('pong:leave', () => leavePongRoom(socket));
+  socket.on('pong:input', (input = {}) => {
+    const room = pongRooms.get(socket.data.pongRoomCode);
+    if (!room || !room.players.has(socket.id) || typeof input.key !== 'string') return;
+    socket.to(room.code).emit('pong:input', { side: room.players.get(socket.id).side, key: input.key, down: !!input.down });
+  });
+  socket.on('pong:state', (snapshot) => {
+    const room = pongRooms.get(socket.data.pongRoomCode);
+    if (!room || room.hostId !== socket.id || !snapshot || typeof snapshot !== 'object') return;
+    socket.to(room.code).volatile.emit('pong:state', snapshot);
+  });
+  socket.on('pong:start', () => {
+    const room = pongRooms.get(socket.data.pongRoomCode);
+    if (!room || room.hostId !== socket.id || room.players.size !== 2) return;
+    io.to(room.code).emit('pong:start', {});
+  });
 
   socket.on('room:create', (payload, ack) => {
     leaveRoom(socket);
@@ -414,7 +509,7 @@ io.on('connection', (socket) => {
     ack({ trackId, rows: leaderboard[sanitize(trackId, 24)] ?? [] });
   });
 
-  socket.on('disconnect', () => leaveRoom(socket));
+  socket.on('disconnect', () => { leaveRoom(socket); leavePongRoom(socket); });
 });
 
 // Merged snapshot relay. One packet per room per tick, sent volatile: if a
@@ -436,6 +531,9 @@ setInterval(() => {
   const now = Date.now();
   for (const [code, room] of rooms) {
     if (room.players.size === 0 || now - room.touched > ROOM_IDLE_MS) rooms.delete(code);
+  }
+  for (const [code, room] of pongRooms) {
+    if (room.players.size === 0 || now - room.touched > ROOM_IDLE_MS) pongRooms.delete(code);
   }
 }, 60_000);
 
