@@ -187,8 +187,9 @@ function tickPong(room, dt) {
     room.elapsed += dt;
     s.velocity.y += Math.sin(room.elapsed * 6) * 2.8;
   }
-  room.frames = (room.frames + 1) % 2;
-  if (room.frames === 0) io.to(room.code).volatile.emit('pong:state', s);
+  // The packet is deliberately tiny; at two players, a 60 Hz volatile relay
+  // makes remote motion feel immediate without queueing old frames.
+  io.to(room.code).volatile.emit('pong:state', s);
 }
 
 function publicPongRoom(room) {
@@ -327,8 +328,8 @@ io.on('connection', (socket) => {
   socket.data.name = 'Racer';
 
   // --- Mangolian Pong rooms -------------------------------------------------
-  // The host advances the deterministic game loop and relays snapshots; the
-  // server owns admission, codes, and which side each connected player uses.
+  // The server advances the shared game loop; it owns admission, codes, and
+  // which side each connected player uses.
   socket.on('pong:create', (_payload, ack) => {
     leavePongRoom(socket);
     const code = newPongCode();
