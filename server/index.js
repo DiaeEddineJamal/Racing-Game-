@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import compression from 'compression';
 import { Server } from 'socket.io';
+import { attachPuck } from './games/puck.mjs';
+import { attachChefs } from './games/chefs.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -89,7 +91,7 @@ function submitTime(trackId, row) {
 const rooms = new Map();
 /** Tiny two-player rooms shared by the separate Mangolian Pong project. */
 const pongRooms = new Map();
-const PONG = { width: 960, height: 540, paddleHeight: 148, speed: 440, tickMs: 1000 / 60 };
+const PONG = { width: 960, height: 540, paddleHeight: 148, speed: 440, tickMs: 1000 / 60, hitSlack: 14, graceMs: 45_000 };
 
 /**
  * Strips angle brackets and control characters only. Names legitimately contain
@@ -128,7 +130,10 @@ function freshPongState() {
     right: PONG.height / 2 - PONG.paddleHeight / 2,
     ball: { x: PONG.width / 2, y: PONG.height / 2 },
     velocity: { x: 275, y: 132 },
-    leftScore: 0, rightScore: 0, hits: 0, storm: 0, nextStorm: 12, paused: false,
+    leftScore: 0, rightScore: 0, hits: 0, storm: 0, nextStorm: 12,
+    // Seconds the ball waits on the centre spot before a serve. Gives both
+    // players a beat to see the reset, and hides any correction snap.
+    hold: 1.2, round: 0, lastWinner: 0,
   };
 }
 
@@ -139,29 +144,45 @@ function resetPongBall(state, toLeft = Math.random() > 0.5) {
     y: Math.random() * 180 - 90,
   };
   state.hits = 0;
+  state.hold = 0.8;
 }
 
+const clampPong = (n, min, max) => Math.max(min, Math.min(max, n));
+const pongConnected = (room) => [...room.players.values()].filter((p) => p.connected).length;
+
 function tickPong(room, dt) {
-  if (!room.playing || room.players.size !== 2) return;
+  if (!room.playing || room.players.size !== 2 || pongConnected(room) !== 2) return;
   const s = room.state;
-  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-  const left = room.inputs.left;
-  const right = room.inputs.right;
-  const leftMove = (left.up ? -1 : 0) + (left.down ? 1 : 0);
-  const rightMove = (right.up ? -1 : 0) + (right.down ? 1 : 0);
-  s.left = clamp(s.left + leftMove * PONG.speed * dt, 0, PONG.height - PONG.paddleHeight);
-  s.right = clamp(s.right + rightMove * PONG.speed * dt, 0, PONG.height - PONG.paddleHeight);
+  room.elapsed += dt;
+  // Each browser owns its paddle and reports where it is; older clients that
+  // still send up/down keys are moved here instead.
+  for (const side of ['left', 'right']) {
+    const reported = room.paddles[side];
+    if (reported !== null) s[side] = reported;
+    else {
+      const input = room.inputs[side];
+      const move = (input.up ? -1 : 0) + (input.down ? 1 : 0);
+      s[side] = clampPong(s[side] + move * PONG.speed * dt, 0, PONG.height - PONG.paddleHeight);
+    }
+  }
+  if (s.hold > 0) {
+    s.hold = Math.max(0, s.hold - dt);
+    return;
+  }
   s.ball.x += s.velocity.x * dt;
   s.ball.y += s.velocity.y * dt;
   if (s.ball.y < 14 || s.ball.y > PONG.height - 14) {
     s.velocity.y *= -1;
-    s.ball.y = clamp(s.ball.y, 14, PONG.height - 14);
+    s.ball.y = clampPong(s.ball.y, 14, PONG.height - 14);
   }
-  const leftHit = s.velocity.x < 0 && s.ball.x - 18 < 76 && s.ball.x + 18 > 24 && s.ball.y > s.left && s.ball.y < s.left + PONG.paddleHeight;
-  const rightHit = s.velocity.x > 0 && s.ball.x + 18 > PONG.width - 76 && s.ball.x - 18 < PONG.width - 24 && s.ball.y > s.right && s.ball.y < s.right + PONG.paddleHeight;
+  // The reach is a little generous: the opponent sees each paddle a few
+  // milliseconds late, and a near miss that looked like a hit feels unfair.
+  const reach = PONG.hitSlack;
+  const leftHit = s.velocity.x < 0 && s.ball.x - 18 < 76 && s.ball.x + 18 > 24 && s.ball.y > s.left - reach && s.ball.y < s.left + PONG.paddleHeight + reach;
+  const rightHit = s.velocity.x > 0 && s.ball.x + 18 > PONG.width - 76 && s.ball.x - 18 < PONG.width - 24 && s.ball.y > s.right - reach && s.ball.y < s.right + PONG.paddleHeight + reach;
   if (leftHit || rightHit) {
     const paddleY = leftHit ? s.left : s.right;
-    const relative = (s.ball.y - (paddleY + PONG.paddleHeight / 2)) / (PONG.paddleHeight / 2);
+    const relative = clampPong((s.ball.y - (paddleY + PONG.paddleHeight / 2)) / (PONG.paddleHeight / 2), -1, 1);
     s.velocity.x = (leftHit ? 1 : -1) * Math.min(Math.abs(s.velocity.x) + 21, 610);
     s.velocity.y += relative * 105;
     s.ball.x = leftHit ? 78 : PONG.width - 78;
@@ -173,6 +194,8 @@ function tickPong(room, dt) {
     if ((leftWon ? s.leftScore : s.rightScore) >= 11) {
       s.leftScore = 0;
       s.rightScore = 0;
+      s.round++;
+      s.lastWinner = leftWon ? 1 : 2;
     }
     resetPongBall(s, !leftWon);
   }
@@ -183,17 +206,33 @@ function tickPong(room, dt) {
     if (s.storm) s.velocity.y *= 1.65;
   }
   if (s.storm) {
-    s.storm -= dt;
-    room.elapsed += dt;
+    s.storm = Math.max(0, s.storm - dt);
     s.velocity.y += Math.sin(room.elapsed * 6) * 2.8;
   }
-  // The packet is deliberately tiny; at two players, a 60 Hz volatile relay
-  // makes remote motion feel immediate without queueing old frames.
-  io.to(room.code).volatile.emit('pong:state', s);
+}
+
+const r1 = (n) => Math.round(n * 10) / 10;
+
+/**
+ * One flat array per snapshot, about 70 bytes of JSON. The server clock rides
+ * along so each browser can work out how old the ball position is and draw it
+ * where it is *now* rather than where it was when the packet left.
+ */
+function pongSnapshot(room) {
+  const s = room.state;
+  return [
+    Date.now(), r1(s.ball.x), r1(s.ball.y), r1(s.velocity.x), r1(s.velocity.y),
+    r1(s.left), r1(s.right), s.leftScore, s.rightScore, s.storm > 0 ? 1 : 0,
+    s.round, s.lastWinner, r1(s.hold),
+  ];
 }
 
 function publicPongRoom(room) {
-  return { code: room.code, hostId: room.hostId, players: [...room.players.values()] };
+  return {
+    code: room.code,
+    playing: room.playing,
+    players: [...room.players.values()].map((p) => ({ side: p.side, connected: p.connected })),
+  };
 }
 
 function broadcastPong(room) {
@@ -201,28 +240,70 @@ function broadcastPong(room) {
   io.to(room.code).emit('pong:room', publicPongRoom(room));
 }
 
+function bindPongSocket(socket, room, player) {
+  if (player.dropTimer) clearTimeout(player.dropTimer);
+  player.dropTimer = null;
+  if (player.socketId && player.socketId !== socket.id) io.sockets.sockets.get(player.socketId)?.leave(room.code);
+  player.socketId = socket.id;
+  player.connected = true;
+  socket.join(room.code);
+  socket.data.pongRoomCode = room.code;
+  socket.data.pongToken = player.token;
+}
+
+/** Removes a player for good: they chose to leave, or never came back. */
+function removePongPlayer(room, token) {
+  const player = room.players.get(token);
+  if (!player) return;
+  if (player.dropTimer) clearTimeout(player.dropTimer);
+  room.players.delete(token);
+  if (player.socketId) io.sockets.sockets.get(player.socketId)?.leave(room.code);
+  if (room.players.size === 0) {
+    if (pongRooms.get(room.code) === room) pongRooms.delete(room.code);
+    return;
+  }
+  room.playing = false;
+  room.paddles = { left: null, right: null };
+  room.inputs = { left: { up: false, down: false }, right: { up: false, down: false } };
+  if (room.hostToken === token) {
+    // Losing the host hands the room, and the teal side, to whoever is left.
+    const next = room.players.values().next().value;
+    room.hostToken = next.token;
+    next.side = 'left';
+    if (next.socketId) io.to(next.socketId).emit('pong:hostChanged', {});
+  }
+  broadcastPong(room);
+}
+
 function leavePongRoom(socket) {
   const code = socket.data.pongRoomCode;
   if (!code) return;
   socket.data.pongRoomCode = null;
   const room = pongRooms.get(code);
-  if (!room) return;
-  room.players.delete(socket.id);
-  socket.leave(code);
-  if (room.players.size === 0) {
-    pongRooms.delete(code);
-    return;
-  }
-  room.playing = false;
-  room.inputs = { left: { up: false, down: false }, right: { up: false, down: false } };
-  if (room.hostId === socket.id) {
-    // A Pong match is host-authoritative; losing the host returns the guest to the lobby.
-    room.hostId = room.players.keys().next().value;
-    for (const player of room.players.values()) player.side = 'left';
-    io.to(code).emit('pong:hostChanged', { hostId: room.hostId });
-  }
+  if (room) removePongPlayer(room, socket.data.pongToken);
+}
+
+/**
+ * A dropped socket is usually a phone that switched apps to send the room
+ * code, or a flaky connection. Hold the seat and pause the match instead of
+ * tearing the room down; the browser resumes with its token when it is back.
+ */
+function dropPongPlayer(socket) {
+  const room = pongRooms.get(socket.data.pongRoomCode);
+  const player = room?.players.get(socket.data.pongToken);
+  if (!room || !player || player.socketId !== socket.id) return;
+  player.connected = false;
+  player.socketId = null;
+  room.paddles[player.side] = null;
+  room.inputs[player.side] = { up: false, down: false };
+  player.dropTimer = setTimeout(() => removePongPlayer(room, player.token), PONG.graceMs);
   broadcastPong(room);
 }
+
+const pongToken = (value) => {
+  const token = sanitize(value, 64);
+  return token.length >= 8 ? token : null;
+};
 
 function publicRoom(room) {
   return {
@@ -272,7 +353,7 @@ function leaveRoom(socket) {
 
 const app = express();
 app.use(compression());
-app.get('/healthz', (_req, res) => res.json({ ok: true, racingRooms: rooms.size, pongRooms: pongRooms.size }));
+app.get('/healthz', (_req, res) => res.json({ ok: true, racingRooms: rooms.size, pongRooms: pongRooms.size, puckRooms: puckRooms.rooms.size, chefRooms: chefRooms.rooms.size }));
 app.get('/api/leaderboard/:trackId', (req, res) => {
   res.json({ trackId: req.params.trackId, rows: leaderboard[req.params.trackId] ?? [] });
 });
@@ -322,76 +403,130 @@ io.engine.on('connection', (rawSocket) => {
   }
 });
 
+// Duo games share one room implementation; see games/duo-rooms.mjs.
+const duoContext = {
+  sanitize,
+  codeLength: ROOM_CODE_LENGTH,
+  newCode: (taken) => {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const code = newCode();
+      if (code && !taken(code)) return code;
+    }
+    return null;
+  },
+};
+const puckRooms = attachPuck(io, duoContext);
+const chefRooms = attachChefs(io, duoContext);
+
 io.on('connection', (socket) => {
+  puckRooms.attach(socket);
+  chefRooms.attach(socket);
   socket.data.roomCode = null;
   socket.data.pongRoomCode = null;
+  socket.data.pongToken = null;
   socket.data.name = 'Racer';
 
   // --- Mangolian Pong rooms -------------------------------------------------
-  // The server advances the shared game loop; it owns admission, codes, and
-  // which side each connected player uses.
-  socket.on('pong:create', (_payload, ack) => {
+  // The server runs the ball and the score. Each browser owns its own paddle
+  // and reports its position, so your paddle never waits on the network.
+  // Players are identified by a per-tab token rather than the socket id, so a
+  // reconnect keeps their seat.
+  const pongAck = (ack, reply) => { if (typeof ack === 'function') ack(reply); };
+
+  socket.on('pong:ping', (_payload, ack) => pongAck(ack, Date.now()));
+
+  socket.on('pong:create', (payload = {}, ack) => {
+    const token = pongToken(payload?.token);
+    if (!token) return pongAck(ack, { error: 'Please refresh the page and try again.' });
     leavePongRoom(socket);
     const code = newPongCode();
-    if (!code) {
-      if (typeof ack === 'function') ack({ error: 'No room codes are available right now.' });
-      return;
-    }
+    if (!code) return pongAck(ack, { error: 'No room codes are available right now.' });
     const room = {
-      code, hostId: socket.id, players: new Map(), touched: Date.now(),
+      code, hostToken: token, players: new Map(), touched: Date.now(),
       inputs: { left: { up: false, down: false }, right: { up: false, down: false } },
-      state: freshPongState(), playing: false, frames: 0, elapsed: 0, lastTick: Date.now(),
+      paddles: { left: null, right: null },
+      state: freshPongState(), playing: false, elapsed: 0, lastTick: Date.now(),
     };
-    room.players.set(socket.id, { id: socket.id, side: 'left' });
+    const player = { token, side: 'left', socketId: null, connected: false, dropTimer: null };
+    room.players.set(token, player);
     pongRooms.set(code, room);
-    socket.join(code);
-    socket.data.pongRoomCode = code;
-    if (typeof ack === 'function') ack({ room: publicPongRoom(room), you: socket.id });
+    bindPongSocket(socket, room, player);
+    pongAck(ack, { room: publicPongRoom(room), side: player.side });
     broadcastPong(room);
   });
 
-  socket.on('pong:join', ({ code } = {}, ack) => {
-    const room = pongRooms.get(sanitize(code, ROOM_CODE_LENGTH).toUpperCase());
-    if (!room) {
-      if (typeof ack === 'function') ack({ error: 'No Pong room has that code.' });
-      return;
+  socket.on('pong:join', (payload = {}, ack) => {
+    const token = pongToken(payload?.token);
+    if (!token) return pongAck(ack, { error: 'Please refresh the page and try again.' });
+    const room = pongRooms.get(sanitize(payload?.code, ROOM_CODE_LENGTH).toUpperCase());
+    if (!room) return pongAck(ack, { error: 'No Pong room has that code.' });
+    let player = room.players.get(token);
+    if (!player) {
+      if (room.players.size >= 2) return pongAck(ack, { error: 'That Pong room already has two players.' });
+      leavePongRoom(socket);
+      const taken = [...room.players.values()].map((p) => p.side);
+      player = { token, side: taken.includes('left') ? 'right' : 'left', socketId: null, connected: false, dropTimer: null };
+      room.players.set(token, player);
     }
-    if (room.players.size >= 2) {
-      if (typeof ack === 'function') ack({ error: 'That Pong room already has two players.' });
-      return;
-    }
-    leavePongRoom(socket);
-    room.players.set(socket.id, { id: socket.id, side: 'right' });
-    socket.join(room.code);
-    socket.data.pongRoomCode = room.code;
-    if (typeof ack === 'function') ack({ room: publicPongRoom(room), you: socket.id });
+    bindPongSocket(socket, room, player);
+    pongAck(ack, { room: publicPongRoom(room), side: player.side });
     broadcastPong(room);
+  });
+
+  socket.on('pong:resume', (payload = {}, ack) => {
+    const room = pongRooms.get(sanitize(payload?.code, ROOM_CODE_LENGTH).toUpperCase());
+    const player = room?.players.get(pongToken(payload?.token));
+    if (!room || !player) return pongAck(ack, { error: 'That match has ended.' });
+    bindPongSocket(socket, room, player);
+    // Give both players a beat after a pause before the ball moves again.
+    room.state.hold = Math.max(room.state.hold, 1);
+    room.lastTick = Date.now();
+    pongAck(ack, { room: publicPongRoom(room), side: player.side });
+    broadcastPong(room);
+    if (room.playing) socket.emit('pong:s', pongSnapshot(room));
   });
 
   socket.on('pong:leave', () => leavePongRoom(socket));
-  socket.on('pong:input', (input = {}) => {
+
+  const pongPlayer = () => {
     const room = pongRooms.get(socket.data.pongRoomCode);
-    const player = room?.players.get(socket.id);
-    if (!room || !player) return;
+    const player = room?.players.get(socket.data.pongToken);
+    return room && player && player.socketId === socket.id ? { room, player } : null;
+  };
+
+  socket.on('pong:paddle', (y) => {
+    const seat = pongPlayer();
+    const value = Number(y);
+    if (!seat || !Number.isFinite(value)) return;
+    seat.room.paddles[seat.player.side] = clampPong(value, 0, PONG.height - PONG.paddleHeight);
+  });
+
+  // Up/down key events from builds that predate paddle reporting.
+  socket.on('pong:input', (input = {}) => {
+    const seat = pongPlayer();
+    if (!seat) return;
     const legacyKey = String(input.key ?? '').toLowerCase();
     const action = input.action === 'up' || input.action === 'down'
       ? input.action
       : legacyKey === 'w' || legacyKey === 'arrowup' ? 'up' : legacyKey === 's' || legacyKey === 'arrowdown' ? 'down' : null;
     if (!action) return;
-    room.inputs[player.side][action] = !!input.down;
-    room.touched = Date.now();
+    seat.room.inputs[seat.player.side][action] = !!input.down;
+    seat.room.touched = Date.now();
   });
+
   socket.on('pong:start', () => {
-    const room = pongRooms.get(socket.data.pongRoomCode);
-    if (!room || room.hostId !== socket.id || room.players.size !== 2) return;
+    const seat = pongPlayer();
+    const room = seat?.room;
+    if (!room || room.hostToken !== seat.player.token || room.players.size !== 2 || pongConnected(room) !== 2) return;
     room.state = freshPongState();
     room.inputs = { left: { up: false, down: false }, right: { up: false, down: false } };
+    room.paddles = { left: null, right: null };
     room.playing = true;
-    room.frames = 0;
     room.elapsed = 0;
     room.lastTick = Date.now();
     io.to(room.code).emit('pong:start', {});
-    io.to(room.code).emit('pong:state', room.state);
+    broadcastPong(room);
+    io.to(room.code).emit('pong:s', pongSnapshot(room));
   });
 
   socket.on('room:create', (payload, ack) => {
@@ -595,17 +730,25 @@ io.on('connection', (socket) => {
     ack({ trackId, rows: leaderboard[sanitize(trackId, 24)] ?? [] });
   });
 
-  socket.on('disconnect', () => { leaveRoom(socket); leavePongRoom(socket); });
+  socket.on('disconnect', () => { leaveRoom(socket); dropPongPlayer(socket); });
 });
 
-// Online Pong is server-authoritative: input arrives from both browsers, while
-// a fixed simulation tick keeps their paddles and ball in the same timeline.
+// Online Pong is server-authoritative for the ball and score: a fixed 60 Hz
+// simulation, with snapshots sent at half that rate. Browsers extrapolate the
+// ball between snapshots, so a faster send rate buys nothing but bandwidth.
+let pongSendFrame = 0;
 setInterval(() => {
   const now = Date.now();
+  const send = (pongSendFrame++ & 1) === 0;
   for (const room of pongRooms.values()) {
     const dt = Math.min((now - room.lastTick) / 1000, 0.05);
     room.lastTick = now;
     tickPong(room, dt);
+    if (send && room.playing) {
+      room.touched = now;
+      // Volatile: a snapshot that can't go out now is worthless later.
+      io.to(room.code).volatile.emit('pong:s', pongSnapshot(room));
+    }
   }
 }, PONG.tickMs);
 
@@ -630,7 +773,10 @@ setInterval(() => {
     if (room.players.size === 0 || now - room.touched > ROOM_IDLE_MS) rooms.delete(code);
   }
   for (const [code, room] of pongRooms) {
-    if (room.players.size === 0 || now - room.touched > ROOM_IDLE_MS) pongRooms.delete(code);
+    if (room.players.size === 0 || now - room.touched > ROOM_IDLE_MS) {
+      for (const player of room.players.values()) if (player.dropTimer) clearTimeout(player.dropTimer);
+      pongRooms.delete(code);
+    }
   }
 }, 60_000);
 
